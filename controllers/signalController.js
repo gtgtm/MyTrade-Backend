@@ -1,0 +1,131 @@
+import nseService from '../services/nseService.js';
+import signalEngine from '../services/signalEngine.js';
+import db from '../services/signalDatabase.js';
+
+class SignalController {
+  static async getSignal(req, res) {
+    const { symbol } = req.params;
+
+    if (!symbol || !['NIFTY', 'BANKNIFTY', 'SENSEX'].includes(symbol)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid symbol. Use NIFTY, BANKNIFTY, or SENSEX'
+      });
+    }
+
+    try {
+      // Check cache first
+      const cacheKey = `signal_${symbol}`;
+      const cached = global.cache.getFromCache(cacheKey);
+      if (cached) {
+        console.log(`📦 Cache hit for ${symbol}`);
+        return res.json(cached);
+      }
+
+      let chain;
+      try {
+        chain = await nseService.fetchOptionChain(symbol);
+      } catch (error) {
+        console.warn(`Real data unavailable for ${symbol}, using mock`);
+        chain = nseService.mockData(symbol);
+      }
+
+      const signal = signalEngine.generate(chain, []);
+
+      // Save signal to database for tracking
+      db.saveSignal(signal);
+
+      const response = {
+        success: true,
+        data: signal,
+        isMock: chain.isMock,
+        cached: false,
+        timestamp: new Date().toISOString()
+      };
+
+      // Cache the response
+      global.cache.setCache(cacheKey, response);
+
+      res.json(response);
+    } catch (error) {
+      console.error(`Error in getSignal for ${symbol}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate signal',
+        message: error.message
+      });
+    }
+  }
+
+  static async getSignals(req, res) {
+    const symbols = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
+
+    try {
+      // Check if all signals are cached
+      const cacheKey = 'signals_all';
+      const cached = global.cache.getFromCache(cacheKey);
+      if (cached) {
+        console.log('📦 Cache hit for all signals');
+        return res.json(cached);
+      }
+
+      const signals = [];
+
+      await Promise.all(
+        symbols.map(async (symbol) => {
+          try {
+            let chain;
+            try {
+              chain = await nseService.fetchOptionChain(symbol);
+            } catch {
+              chain = nseService.mockData(symbol);
+            }
+
+            const signal = signalEngine.generate(chain, []);
+
+            // Save signal to database
+            db.saveSignal(signal);
+
+            signals.push({
+              symbol,
+              ...signal,
+              isMock: chain.isMock
+            });
+          } catch (error) {
+            console.error(`Error fetching ${symbol}:`, error);
+          }
+        })
+      );
+
+      const response = {
+        success: true,
+        data: signals,
+        count: signals.length,
+        cached: false,
+        timestamp: new Date().toISOString()
+      };
+
+      // Cache the response
+      global.cache.setCache(cacheKey, response);
+
+      res.json(response);
+    } catch (error) {
+      console.error('Error in getSignals:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch signals'
+      });
+    }
+  }
+
+  static async healthCheck(req, res) {
+    res.json({
+      success: true,
+      message: 'FnO Signals Backend is running',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0'
+    });
+  }
+}
+
+export default SignalController;
