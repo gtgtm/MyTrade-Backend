@@ -9,7 +9,7 @@ class CryptoController {
     const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
 
     if (!SYMBOLS.includes(normalizedSymbol)) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         error: `Invalid crypto symbol. Supported: ${SYMBOLS.join(', ')}`
       });
@@ -21,14 +21,16 @@ class CryptoController {
       return res.json({
         success: true,
         data: cached,
-        metadata: { timestamp: new Date(), fromCache: true }
+        isMock: cached.isMock || false,
+        cached: true,
+        timestamp: cached.generatedAt || new Date().toISOString()
       });
     }
 
     try {
       const data = await cryptoService.fetchAll(normalizedSymbol);
       if (!data) {
-        return res.json({
+        return res.status(500).json({
           success: false,
           error: 'Failed to fetch crypto data'
         });
@@ -40,11 +42,12 @@ class CryptoController {
       res.json({
         success: true,
         data: signal,
-        metadata: { timestamp: new Date(), fromCache: false }
+        isMock: false,
+        timestamp: new Date().toISOString()
       });
     } catch (err) {
       console.error('CryptoController.getSignal error:', err);
-      res.json({
+      res.status(500).json({
         success: false,
         error: err.message || 'Unknown error'
       });
@@ -75,11 +78,12 @@ class CryptoController {
       res.json({
         success: true,
         data: results,
-        metadata: { timestamp: new Date(), count: results.length }
+        count: results.length,
+        timestamp: new Date().toISOString()
       });
     } catch (err) {
       console.error('CryptoController.getAllSignals error:', err);
-      res.json({
+      res.status(500).json({
         success: false,
         error: err.message || 'Unknown error',
         data: []
