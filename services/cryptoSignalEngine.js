@@ -47,11 +47,11 @@ class CryptoSignalEngine {
     score = Math.max(0, Math.min(100, score));
 
     // Determine signal type
-    let signalType = 'NO_TRADE';
+    let signalType = 'NO TRADE';
     if (score >= 60 && rsi14 < 40 && currentPrice > ema9) {
-      signalType = 'BUY_CALL'; // Long signal
+      signalType = 'BUY CALL'; // Long signal
     } else if (score >= 60 && rsi14 > 60 && currentPrice < ema9) {
-      signalType = 'BUY_PUT'; // Short signal
+      signalType = 'BUY PUT'; // Short signal
     }
 
     // Entry, stop loss, target (3% SL, 7% target for crypto volatility)
@@ -97,7 +97,7 @@ class CryptoSignalEngine {
     return {
       symbol,
       price: price || 0,
-      signalType: 'NO_TRADE',
+      signalType: 'NO TRADE',
       score: 50,
       entryPrice: price || 0,
       stopLoss: (price || 0) * 0.97,
