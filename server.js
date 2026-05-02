@@ -1,4 +1,4 @@
-// v2.1.1 - Render redeploy test - Entry/SL/Target fix deployed
+// v2.1.2 - Final redeploy - Entry/SL/Target fixes live
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
