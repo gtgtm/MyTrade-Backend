@@ -7,11 +7,11 @@ class CryptoService {
   constructor() {
     this.client = axios.create({
       baseURL: BINANCE_API_BASE,
-      timeout: 10000,
+      timeout: 15000,
     });
   }
 
-  async fetchKlines(symbol, interval = '15m', limit = 100) {
+  async fetchKlines(symbol, interval = '15m', limit = 100, retries = 2) {
     try {
       const res = await this.client.get('/klines', {
         params: { symbol, interval, limit }
@@ -24,15 +24,20 @@ class CryptoService {
         close: parseFloat(k[4]),
         volume: parseFloat(k[5]),
         quoteVolume: parseFloat(k[7]),
-        takerBuyBaseVolume: parseFloat(k[9]) // Taker buy base asset volume
+        takerBuyBaseVolume: parseFloat(k[9])
       }));
     } catch (err) {
+      if (retries > 0) {
+        console.log(`CryptoService.fetchKlines(${symbol}) retry ${3 - retries}/2...`);
+        await new Promise(r => setTimeout(r, 500));
+        return this.fetchKlines(symbol, interval, limit, retries - 1);
+      }
       console.error(`CryptoService.fetchKlines(${symbol}) failed:`, err.message);
       return null;
     }
   }
 
-  async fetchTicker(symbol) {
+  async fetchTicker(symbol, retries = 2) {
     try {
       const res = await this.client.get('/ticker/24hr', {
         params: { symbol }
@@ -49,6 +54,11 @@ class CryptoService {
         askPrice: parseFloat(res.data.askPrice)
       };
     } catch (err) {
+      if (retries > 0) {
+        console.log(`CryptoService.fetchTicker(${symbol}) retry ${3 - retries}/2...`);
+        await new Promise(r => setTimeout(r, 500));
+        return this.fetchTicker(symbol, retries - 1);
+      }
       console.error(`CryptoService.fetchTicker(${symbol}) failed:`, err.message);
       return null;
     }

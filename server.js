@@ -1,4 +1,4 @@
-// v2.1.0 - Fixed signal entry/SL/target for all signals
+// v2.1.1 - Render redeploy test - Entry/SL/Target fix deployed
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';

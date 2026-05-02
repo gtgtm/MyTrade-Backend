@@ -9,14 +9,12 @@
  * - Daily statistics
  */
 
-import path from 'path';
-
-// sqlite3 will be loaded dynamically if available, otherwise mock mode
-let sqlite3 = null;
+import database from './database.js';
 
 class HistoricalDataService {
   constructor() {
-    this.mockMode = true;
+    this.db = database;
+    this.mockMode = !database.isConnected;
     this.mockData = {
       pcr: [],
       maxPain: [],
@@ -24,34 +22,28 @@ class HistoricalDataService {
       alerts: []
     };
 
-    // Try to load sqlite3 dynamically
-    try {
-      // For now, use mock mode - sqlite3 native bindings not available on this system
-      // In production, this would connect to a real database
-      console.warn('⚠️  Using historical data service in MOCK MODE (sqlite3 bindings unavailable)');
-      this.mockMode = true;
-    } catch (err) {
-      console.warn('⚠️  Historical data service error:', err.message);
-      this.mockMode = true;
+    if (this.mockMode) {
+      console.log('📊 HistoricalDataService initialized (mock mode)');
+    } else {
+      console.log('📊 HistoricalDataService initialized (PostgreSQL mode)');
     }
 
-    // Track last snapshot time per symbol
     this.lastSnapshotTime = {};
-    this.snapshotIntervalMinutes = 60; // Hourly by default
+    this.snapshotIntervalMinutes = 60;
   }
 
-  /**
-   * Store PCR snapshot
-   */
   async recordPCR(symbol, pcrData) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO pcr_history (symbol, pcr_ratio, sentiment, confidence, change_percent, total_call_oi, total_put_oi)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
+    if (this.mockMode) {
+      this.mockData.pcr.push({ symbol, ...pcrData, recorded_at: new Date() });
+      return { id: Math.random() };
+    }
 
-      this.db.run(
-        sql,
+    try {
+      const result = await this.db.query(
+        `INSERT INTO pcr_history
+         (symbol, pcr_ratio, sentiment, confidence, change_percent, total_call_oi, total_put_oi)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
         [
           symbol,
           pcrData.ratio,
@@ -60,88 +52,86 @@ class HistoricalDataService {
           pcrData.change || 0,
           pcrData.totalCallOI,
           pcrData.totalPutOI
-        ],
-        function(err) {
-          if (err) {
-            console.warn(`⚠️  Failed to record PCR for ${symbol}:`, err.message);
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+        ]
       );
-    });
+      return result.rows[0];
+    } catch (err) {
+      console.error('❌ Error recording PCR:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Store Max Pain snapshot
-   */
   async recordMaxPain(symbol, maxPainData) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO max_pain_history (symbol, max_pain_level, current_price, distance, direction, percentage_move)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
+    if (this.mockMode) {
+      this.mockData.maxPain.push({ symbol, ...maxPainData, recorded_at: new Date() });
+      return { id: Math.random() };
+    }
 
-      this.db.run(
-        sql,
+    try {
+      const result = await this.db.query(
+        `INSERT INTO max_pain_history
+         (symbol, max_pain, expiry, confidence, change_amount)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
         [
           symbol,
           maxPainData.level,
-          maxPainData.currentPrice,
-          maxPainData.distance,
-          maxPainData.direction,
-          maxPainData.percentageMove
-        ],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+          maxPainData.expiry || new Date(),
+          maxPainData.confidence,
+          maxPainData.changeAmount || 0
+        ]
       );
-    });
+      return result.rows[0];
+    } catch (err) {
+      console.error('❌ Error recording Max Pain:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Store IV data for a strike
-   */
   async recordIV(symbol, strikePrice, callIV, putIV, skewPattern) {
-    return new Promise((resolve, reject) => {
-      const atmIV = (callIV + putIV) / 2;
+    if (this.mockMode) {
+      this.mockData.iv.push({
+        symbol,
+        strike: strikePrice,
+        callIV,
+        putIV,
+        skewPattern,
+        recorded_at: new Date()
+      });
+      return { id: Math.random() };
+    }
 
-      const sql = `
-        INSERT INTO iv_history (symbol, strike_price, atm_iv, call_iv, put_iv, skew_pattern)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-      this.db.run(
-        sql,
-        [symbol, strikePrice, atmIV, callIV, putIV, skewPattern],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+    try {
+      const result = await this.db.query(
+        `INSERT INTO iv_history
+         (symbol, strike, iv, option_type, expiry)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [
+          symbol,
+          strikePrice,
+          (callIV + putIV) / 2,
+          'ATM',
+          new Date()
+        ]
       );
-    });
+      return result.rows[0];
+    } catch (err) {
+      console.error('❌ Error recording IV:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Store Greeks for a strike
-   */
   async recordGreeks(symbol, strikePrice, optionType, greeks) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO greeks_history (symbol, strike_price, option_type, delta, gamma, theta, vega)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
+    if (this.mockMode) {
+      return { id: Math.random() };
+    }
 
-      this.db.run(
-        sql,
+    try {
+      await this.db.query(
+        `INSERT INTO greeks_history
+         (symbol, strike, option_type, delta, gamma, theta, vega)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           symbol,
           strikePrice,
@@ -150,116 +140,99 @@ class HistoricalDataService {
           greeks.gamma,
           greeks.theta,
           greeks.vega
-        ],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+        ]
       );
-    });
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error recording Greeks:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Store Open Interest data
-   */
   async recordOI(symbol, strikePrice, callOI, putOI) {
-    return new Promise((resolve, reject) => {
+    if (this.mockMode) {
+      return { id: Math.random() };
+    }
+
+    try {
       const totalOI = callOI + putOI;
       const oiRatio = callOI > 0 ? putOI / callOI : 0;
 
-      const sql = `
-        INSERT INTO oi_history (symbol, strike_price, call_oi, put_oi, total_oi, oi_ratio)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-
-      this.db.run(
-        sql,
-        [symbol, strikePrice, callOI, putOI, totalOI, oiRatio],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+      await this.db.query(
+        `INSERT INTO oi_history
+         (symbol, strike, call_oi, put_oi, total_oi, oi_ratio)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [symbol, strikePrice, callOI, putOI, totalOI, oiRatio]
       );
-    });
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error recording OI:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Record price change
-   */
   async recordPrice(symbol, price, changeAmount, changePercent) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO price_history (symbol, price, change_amount, change_percent)
-        VALUES (?, ?, ?, ?)
-      `;
+    if (this.mockMode) {
+      return { id: Math.random() };
+    }
 
-      this.db.run(
-        sql,
-        [symbol, price, changeAmount || 0, changePercent || 0],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+    try {
+      await this.db.query(
+        `INSERT INTO price_history
+         (symbol, price, change_amount, change_percent)
+         VALUES ($1, $2, $3, $4)`,
+        [symbol, price, changeAmount || 0, changePercent || 0]
       );
-    });
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error recording price:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Record alert
-   */
   async recordAlert(symbol, alertData) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT INTO alerts_history (symbol, alert_type, severity, message, pcr_ratio, max_pain, current_price, confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+    if (this.mockMode) {
+      this.mockData.alerts.push({ symbol, ...alertData, recorded_at: new Date() });
+      return { id: Math.random() };
+    }
 
-      this.db.run(
-        sql,
+    try {
+      await this.db.query(
+        `INSERT INTO alerts_history
+         (symbol, alert_type, severity, message, confidence)
+         VALUES ($1, $2, $3, $4, $5)`,
         [
           symbol,
           alertData.type,
           alertData.severity,
           alertData.message,
-          alertData.pcr || null,
-          alertData.maxPain || null,
-          alertData.price || null,
-          alertData.confidence || null
-        ],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+          alertData.confidence || 0
+        ]
       );
-    });
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error recording alert:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Store complete snapshot (for hourly/daily records)
-   */
   async recordSnapshot(symbol, snapshotType, snapshotData) {
-    return new Promise((resolve, reject) => {
+    if (this.mockMode) {
+      return { id: Math.random() };
+    }
+
+    try {
       const today = new Date().toISOString().split('T')[0];
-
-      const sql = `
-        INSERT OR REPLACE INTO snapshots (symbol, snapshot_date, snapshot_type, current_price, pcr_ratio, max_pain_level, atm_iv, full_snapshot)
-        VALUES (?, ?, ?, ?, ?, ?, ?, json(?))
-      `;
-
-      this.db.run(
-        sql,
+      await this.db.query(
+        `INSERT INTO snapshots
+         (symbol, snapshot_date, snapshot_type, current_price, pcr_ratio, max_pain_level, atm_iv, full_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (symbol, snapshot_date, snapshot_type) DO UPDATE SET
+           current_price = $4,
+           pcr_ratio = $5,
+           max_pain_level = $6,
+           atm_iv = $7,
+           full_snapshot = $8`,
         [
           symbol,
           today,
@@ -269,30 +242,23 @@ class HistoricalDataService {
           snapshotData.maxPain,
           snapshotData.atmIV,
           JSON.stringify(snapshotData)
-        ],
-        function(err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
+        ]
       );
-    });
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error recording snapshot:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get PCR history for a symbol (time range)
-   */
   async getPCRHistory(symbol, days = 7) {
     if (this.mockMode) {
-      // Return mock PCR history data
       const mockData = [];
+      const base = symbol === 'NIFTY' ? 1.0 : symbol === 'BANKNIFTY' ? 0.95 : 1.05;
       for (let i = 0; i < Math.min(days * 5, 150); i++) {
-        const base = symbol === 'NIFTY' ? 1.0 : symbol === 'BANKNIFTY' ? 0.95 : 1.05;
         mockData.push({
           id: i,
-          symbol: symbol,
+          symbol,
           pcr_ratio: base + (Math.random() - 0.5) * 0.4,
           sentiment: 'Neutral',
           confidence: 0.5 + Math.random() * 0.3,
@@ -303,213 +269,179 @@ class HistoricalDataService {
       return mockData;
     }
 
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT * FROM pcr_history
-        WHERE symbol = ? AND recorded_at >= datetime('now', '-' || ? || ' days')
-        ORDER BY recorded_at DESC
-      `;
-
-      this.db.all(sql, [symbol, days], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `SELECT * FROM pcr_history
+         WHERE symbol = $1
+         AND recorded_at >= NOW() - INTERVAL '1 day' * $2
+         ORDER BY recorded_at DESC`,
+        [symbol, days]
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting PCR history:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get Max Pain history for a symbol
-   */
   async getMaxPainHistory(symbol, days = 7) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT * FROM max_pain_history
-        WHERE symbol = ? AND recorded_at >= datetime('now', '-' || ? || ' days')
-        ORDER BY recorded_at DESC
-      `;
+    if (this.mockMode) {
+      return [];
+    }
 
-      this.db.all(sql, [symbol, days], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `SELECT * FROM max_pain_history
+         WHERE symbol = $1
+         AND recorded_at >= NOW() - INTERVAL '1 day' * $2
+         ORDER BY recorded_at DESC`,
+        [symbol, days]
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting Max Pain history:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get IV history for a symbol and optional strike
-   */
   async getIVHistory(symbol, strikePrice = null, days = 7) {
     if (this.mockMode) {
-      // Return mock IV history
       const mockData = [];
       const baseIV = symbol === 'NIFTY' ? 17 : symbol === 'BANKNIFTY' ? 18 : 16;
       for (let i = 0; i < Math.min(days * 5, 150); i++) {
         mockData.push({
           id: i,
-          symbol: symbol,
-          strike_price: strikePrice || 22300,
-          call_iv: baseIV + (Math.random() - 0.5) * 4,
-          put_iv: baseIV + (Math.random() - 0.5) * 4,
+          symbol,
+          strike: strikePrice || 22300,
+          iv: baseIV + (Math.random() - 0.5) * 4,
           recorded_at: new Date(Date.now() - i * 3600000).toISOString()
         });
       }
       return mockData;
     }
 
-    return new Promise((resolve, reject) => {
-      let sql = `
-        SELECT * FROM iv_history
-        WHERE symbol = ? AND recorded_at >= datetime('now', '-' || ? || ' days')
-      `;
-
+    try {
+      let query = `SELECT * FROM iv_history
+         WHERE symbol = $1
+         AND recorded_at >= NOW() - INTERVAL '1 day' * $2`;
       const params = [symbol, days];
 
       if (strikePrice) {
-        sql += ` AND strike_price = ?`;
+        query += ` AND strike = $3`;
         params.push(strikePrice);
       }
 
-      sql += ` ORDER BY recorded_at DESC`;
+      query += ` ORDER BY recorded_at DESC`;
 
-      this.db.all(sql, params, (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+      const result = await this.db.query(query, params);
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting IV history:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get alerts history for a symbol
-   */
   async getAlertsHistory(symbol, days = 7, severity = null) {
-    return new Promise((resolve, reject) => {
-      let sql = `
-        SELECT * FROM alerts_history
-        WHERE symbol = ? AND recorded_at >= datetime('now', '-' || ? || ' days')
-      `;
+    if (this.mockMode) {
+      return [];
+    }
 
+    try {
+      let query = `SELECT * FROM alerts_history
+         WHERE symbol = $1
+         AND recorded_at >= NOW() - INTERVAL '1 day' * $2`;
       const params = [symbol, days];
 
       if (severity) {
-        sql += ` AND severity = ?`;
+        query += ` AND severity = $3`;
         params.push(severity);
       }
 
-      sql += ` ORDER BY recorded_at DESC`;
+      query += ` ORDER BY recorded_at DESC`;
 
-      this.db.all(sql, params, (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+      const result = await this.db.query(query, params);
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting alerts history:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get daily statistics for a symbol
-   */
   async getDailyStats(symbol, days = 30) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT * FROM daily_stats
-        WHERE symbol = ? AND trade_date >= date('now', '-' || ? || ' days')
-        ORDER BY trade_date DESC
-      `;
+    if (this.mockMode) {
+      return [];
+    }
 
-      this.db.all(sql, [symbol, days], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `SELECT * FROM daily_stats
+         WHERE symbol = $1
+         AND trade_date >= CURRENT_DATE - INTERVAL '1 day' * $2
+         ORDER BY trade_date DESC`,
+        [symbol, days]
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting daily stats:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get snapshots for a symbol
-   */
   async getSnapshots(symbol, snapshotType = 'hourly', days = 30) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT * FROM snapshots
-        WHERE symbol = ? AND snapshot_type = ? AND snapshot_date >= date('now', '-' || ? || ' days')
-        ORDER BY snapshot_date DESC
-      `;
+    if (this.mockMode) {
+      return [];
+    }
 
-      this.db.all(sql, [symbol, snapshotType, days], (err, rows) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(rows || []);
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `SELECT * FROM snapshots
+         WHERE symbol = $1
+         AND snapshot_type = $2
+         AND snapshot_date >= CURRENT_DATE - INTERVAL '1 day' * $3
+         ORDER BY snapshot_date DESC`,
+        [symbol, snapshotType, days]
+      );
+      return result.rows;
+    } catch (err) {
+      console.error('❌ Error getting snapshots:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Generate daily statistics from hourly data
-   */
   async generateDailyStats(symbol, tradeDate) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        INSERT OR REPLACE INTO daily_stats (
-          symbol, trade_date,
-          avg_pcr, max_pcr, min_pcr, pcr_volatility,
-          avg_max_pain, max_pain_variance,
-          avg_atm_iv, max_atm_iv, min_atm_iv
-        )
-        SELECT
-          ?,
-          ?,
-          AVG(p.pcr_ratio),
-          MAX(p.pcr_ratio),
-          MIN(p.pcr_ratio),
-          (MAX(p.pcr_ratio) - MIN(p.pcr_ratio)),
-          AVG(m.max_pain_level),
-          (MAX(m.max_pain_level) - MIN(m.max_pain_level)),
-          AVG(i.atm_iv),
-          MAX(i.atm_iv),
-          MIN(i.atm_iv)
-        FROM
-          pcr_history p
-          LEFT JOIN max_pain_history m ON p.symbol = m.symbol AND DATE(p.recorded_at) = DATE(m.recorded_at)
-          LEFT JOIN iv_history i ON p.symbol = i.symbol AND DATE(p.recorded_at) = DATE(i.recorded_at)
-        WHERE
-          p.symbol = ? AND DATE(p.recorded_at) = ?
-        GROUP BY p.symbol, DATE(p.recorded_at)
-      `;
+    if (this.mockMode) {
+      return { id: Math.random() };
+    }
 
-      this.db.run(sql, [symbol, tradeDate, symbol, tradeDate], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ id: this.lastID });
-        }
-      });
-    });
+    try {
+      await this.db.query(
+        `INSERT INTO daily_stats
+         (symbol, trade_date, avg_pcr, max_pcr, min_pcr)
+         SELECT $1, $2,
+           AVG(pcr_ratio),
+           MAX(pcr_ratio),
+           MIN(pcr_ratio)
+         FROM pcr_history
+         WHERE symbol = $1
+         AND DATE(recorded_at) = $2
+         ON CONFLICT (symbol, trade_date) DO UPDATE SET
+           avg_pcr = EXCLUDED.avg_pcr,
+           max_pcr = EXCLUDED.max_pcr,
+           min_pcr = EXCLUDED.min_pcr`,
+        [symbol, tradeDate]
+      );
+      return { id: Math.random() };
+    } catch (err) {
+      console.error('❌ Error generating daily stats:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Get trend analysis for a symbol
-   */
   async getTrendAnalysis(symbol, days = 30) {
     if (this.mockMode) {
-      // Return mock trend analysis
       const base = symbol === 'NIFTY' ? 1.0 : symbol === 'BANKNIFTY' ? 0.95 : 1.05;
       return {
-        symbol: symbol,
+        symbol,
         avg_pcr: base,
         max_pcr: base + 0.35,
         min_pcr: base - 0.25,
@@ -521,140 +453,113 @@ class HistoricalDataService {
       };
     }
 
-    return new Promise((resolve, reject) => {
-      const sql = `
-        SELECT
-          symbol,
-          AVG(pcr_ratio) as avg_pcr,
-          MAX(pcr_ratio) as max_pcr,
-          MIN(pcr_ratio) as min_pcr,
-          (MAX(pcr_ratio) - MIN(pcr_ratio)) as pcr_range,
-          COUNT(DISTINCT DATE(recorded_at)) as trading_days,
-          SUM(CASE WHEN sentiment LIKE '%Bearish%' THEN 1 ELSE 0 END) as bearish_days,
-          SUM(CASE WHEN sentiment LIKE '%Bullish%' THEN 1 ELSE 0 END) as bullish_days
-        FROM pcr_history
-        WHERE symbol = ? AND recorded_at >= datetime('now', '-' || ? || ' days')
-        GROUP BY symbol
-      `;
-
-      this.db.get(sql, [symbol, days], (err, row) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `SELECT
+           symbol,
+           AVG(pcr_ratio) as avg_pcr,
+           MAX(pcr_ratio) as max_pcr,
+           MIN(pcr_ratio) as min_pcr,
+           MAX(pcr_ratio) - MIN(pcr_ratio) as pcr_range,
+           COUNT(DISTINCT DATE(recorded_at)) as trading_days
+         FROM pcr_history
+         WHERE symbol = $1
+         AND recorded_at >= NOW() - INTERVAL '1 day' * $2
+         GROUP BY symbol`,
+        [symbol, days]
+      );
+      return result.rows[0] || {};
+    } catch (err) {
+      console.error('❌ Error getting trend analysis:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Acknowledge an alert
-   */
   async acknowledgeAlert(alertId) {
-    return new Promise((resolve, reject) => {
-      const sql = `
-        UPDATE alerts_history
-        SET acknowledged = 1, acknowledged_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
+    if (this.mockMode) {
+      return { changes: 1 };
+    }
 
-      this.db.run(sql, [alertId], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ changes: this.changes });
-        }
-      });
-    });
+    try {
+      const result = await this.db.query(
+        `UPDATE alerts_history
+         SET acknowledged = true,
+             acknowledged_at = NOW()
+         WHERE id = $1`,
+        [alertId]
+      );
+      return { changes: result.rowCount };
+    } catch (err) {
+      console.error('❌ Error acknowledging alert:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Clean old data (data retention policy)
-   */
   async cleanOldData(retentionDays = 365) {
-    return new Promise((resolve, reject) => {
-      const cutoffDate = `datetime('now', '-' || ? || ' days')`;
+    if (this.mockMode) {
+      return { deletedRecords: 0 };
+    }
 
-      Promise.all([
-        this.deleteOlderThan('pcr_history', retentionDays),
-        this.deleteOlderThan('max_pain_history', retentionDays),
-        this.deleteOlderThan('iv_history', retentionDays),
-        this.deleteOlderThan('greeks_history', retentionDays),
-        this.deleteOlderThan('oi_history', retentionDays),
-        this.deleteOlderThan('price_history', retentionDays),
-        this.deleteOlderThan('alerts_history', retentionDays)
-      ])
-        .then((results) => {
-          const totalDeleted = results.reduce((sum, r) => sum + r, 0);
-          console.log(`🧹 Cleaned up ${totalDeleted} old records`);
-          resolve({ deletedRecords: totalDeleted });
-        })
-        .catch(reject);
-    });
+    try {
+      const cutoff = `NOW() - INTERVAL '1 day' * ${retentionDays}`;
+
+      const tables = [
+        'pcr_history',
+        'max_pain_history',
+        'iv_history',
+        'alerts_history'
+      ];
+
+      let totalDeleted = 0;
+
+      for (const table of tables) {
+        const result = await this.db.query(
+          `DELETE FROM ${table} WHERE recorded_at < NOW() - INTERVAL '1 day' * $1`,
+          [retentionDays]
+        );
+        totalDeleted += result.rowCount;
+      }
+
+      console.log(`🧹 Cleaned up ${totalDeleted} old records`);
+      return { deletedRecords: totalDeleted };
+    } catch (err) {
+      console.error('❌ Error cleaning old data:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Helper: Delete records older than X days
-   */
-  deleteOlderThan(table, days) {
-    return new Promise((resolve, reject) => {
-      const sql = `DELETE FROM ${table} WHERE created_at < datetime('now', '-' || ? || ' days')`;
-
-      this.db.run(sql, [days], function(err) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(this.changes);
-        }
-      });
-    });
-  }
-
-  /**
-   * Get database statistics
-   */
   async getStats() {
-    return new Promise((resolve, reject) => {
-      const queries = {
-        pcrCount: 'SELECT COUNT(*) as count FROM pcr_history',
-        maxPainCount: 'SELECT COUNT(*) as count FROM max_pain_history',
-        ivCount: 'SELECT COUNT(*) as count FROM iv_history',
-        alertsCount: 'SELECT COUNT(*) as count FROM alerts_history',
-        greeksCount: 'SELECT COUNT(*) as count FROM greeks_history',
-        snapshotsCount: 'SELECT COUNT(*) as count FROM snapshots'
+    if (this.mockMode) {
+      return {
+        pcrCount: 0,
+        maxPainCount: 0,
+        ivCount: 0,
+        alertsCount: 0
       };
+    }
 
-      const stats = {};
-      let completed = 0;
+    try {
+      const [pcr, maxPain, iv, alerts] = await Promise.all([
+        this.db.getOne('SELECT COUNT(*) as count FROM pcr_history'),
+        this.db.getOne('SELECT COUNT(*) as count FROM max_pain_history'),
+        this.db.getOne('SELECT COUNT(*) as count FROM iv_history'),
+        this.db.getOne('SELECT COUNT(*) as count FROM alerts_history')
+      ]);
 
-      Object.entries(queries).forEach(([key, sql]) => {
-        this.db.get(sql, (err, row) => {
-          if (!err && row) {
-            stats[key] = row.count;
-          }
-          completed++;
-          if (completed === Object.keys(queries).length) {
-            resolve(stats);
-          }
-        });
-      });
-    });
+      return {
+        pcrCount: parseInt(pcr.count) || 0,
+        maxPainCount: parseInt(maxPain.count) || 0,
+        ivCount: parseInt(iv.count) || 0,
+        alertsCount: parseInt(alerts.count) || 0
+      };
+    } catch (err) {
+      console.error('❌ Error getting database stats:', err.message);
+      throw err;
+    }
   }
 
-  /**
-   * Close database connection
-   */
-  close() {
-    return new Promise((resolve, reject) => {
-      this.db.close((err) => {
-        if (err) {
-          reject(err);
-        } else {
-          console.log('📊 Historical database closed');
-          resolve();
-        }
-      });
-    });
+  async close() {
+    return this.db.close();
   }
 }
 
