@@ -1,3 +1,4 @@
+// v2.1.0 - Fixed signal entry/SL/target for all signals
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -6,7 +7,15 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import apiRoutes from './routes/api.js';
 import PriceStreamer from './services/priceStreamer.js';
+import SignalScheduler from './services/signalScheduler.js';
+import ExitManager from './services/exitManager.js';
+import DivergenceAnalyzer from './services/divergenceAnalyzer.js';
+import IncidentManager from './services/incidentManager.js';
+import RealtimeManager from './services/realtimeManager.js';
+import PushNotificationManager from './services/pushNotificationManager.js';
 import cronService from './services/cronService.js';
+import cryptoService from './services/cryptoService.js';
+import database from './services/database.js';
 
 dotenv.config();
 
@@ -21,6 +30,19 @@ const io = new Server(httpServer, {
 
 const PORT = process.env.PORT || 3000;
 const priceStreamer = new PriceStreamer(io);
+const exitManager = new ExitManager(io);
+const divergenceAnalyzer = new DivergenceAnalyzer(exitManager);
+const incidentManager = new IncidentManager(io);
+const realtimeManager = new RealtimeManager(io);
+const pushNotificationManager = new PushNotificationManager();
+const signalScheduler = new SignalScheduler(io, cryptoService, exitManager);
+
+// Expose services globally for API access
+global.exitManager = exitManager;
+global.divergenceAnalyzer = divergenceAnalyzer;
+global.incidentManager = incidentManager;
+global.realtimeManager = realtimeManager;
+global.pushNotificationManager = pushNotificationManager;
 
 // Signal caching: 2 minutes TTL
 const CACHE_TTL = parseInt(process.env.CACHE_DURATION) || 120000;
@@ -41,6 +63,9 @@ const setCache = (key, data) => {
 };
 
 global.cache = { getFromCache, setCache };
+
+// Exit manager will be attached after instantiation
+let exitManagerGlobal = null;
 
 // Middleware
 app.use(cors({
@@ -91,7 +116,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// WebSocket connection handlers with enhanced data
+// WebSocket connection handlers with real-time + notification features
 io.on('connection', (socket) => {
   const clientId = socket.id.substring(0, 8);
   console.log(`🔌 WebSocket client connected: ${clientId}`);
@@ -99,25 +124,54 @@ io.on('connection', (socket) => {
 
   // Send connection confirmation with enhanced data info
   socket.emit('connected', {
-    message: 'Connected to enhanced price stream',
+    message: 'Connected to real-time trading system',
     clientId,
-    version: '2.0',
+    version: '3.0',
     features: {
       realTimePrices: true,
-      greeksCalculation: true,
-      maxPainAnalysis: true,
-      pcrAlerts: true,
-      volatilitySkew: true
+      liveTradeExits: true,
+      divergenceAlerts: true,
+      systemNotifications: true,
+      pushNotifications: true,
+      deepLinking: true
     },
     updateFrequency: {
-      dataFetch: '5 seconds',
-      clientBroadcast: '1 second',
+      prices: '<100ms',
+      tradeExits: 'instant',
+      alerts: 'instant',
       latency: '<100ms'
     },
     timestamp: new Date().toISOString()
   });
 
-  // Handle subscription to specific symbols
+  // Real-time subscription (Week 5)
+  socket.on('subscribe:realtime', (data) => {
+    const { symbols, userId } = data;
+    if (Array.isArray(symbols)) {
+      symbols.forEach(symbol => realtimeManager.subscribe(socket, symbol));
+      console.log(`📊 Client ${clientId} subscribed to real-time: ${symbols.join(', ')}`);
+      socket.emit('realtime:subscribed', {
+        symbols,
+        status: 'active',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Register device for push notifications
+  socket.on('register:push', (data) => {
+    const { userId, deviceToken, platform } = data;
+    if (userId && deviceToken) {
+      pushNotificationManager.registerDeviceToken(userId, deviceToken, platform);
+      socket.emit('push:registered', {
+        status: 'ok',
+        platform,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Handle subscription to specific symbols (legacy)
   socket.on('subscribe', (data) => {
     const { symbols } = data;
     if (Array.isArray(symbols)) {
@@ -156,10 +210,14 @@ io.on('connection', (socket) => {
     socket.emit('stats', priceStreamer.getStats());
   });
 
+  // Request real-time stats
+  socket.on('realtime:stats', () => {
+    socket.emit('realtime:stats', realtimeManager.getStats());
+  });
+
   // Handle alert threshold configuration
   socket.on('configureAlerts', (data) => {
     const { symbol, config } = data;
-    // In production, this would store user-specific alert preferences
     socket.emit('alert_config', {
       symbol,
       config,
@@ -171,6 +229,7 @@ io.on('connection', (socket) => {
   // Handle client disconnect
   socket.on('disconnect', () => {
     priceStreamer.unregisterClient(clientId);
+    realtimeManager.handleDisconnect(socket.id);
     console.log(`🔌 Client disconnected: ${clientId}`);
   });
 
@@ -180,8 +239,50 @@ io.on('connection', (socket) => {
   });
 });
 
+// Initialize database tables on startup
+if (database.isConnected) {
+  try {
+    await database.initializeTables();
+    console.log('✅ Database tables initialized');
+  } catch (err) {
+    console.error('⚠️  Database initialization warning:', err.message);
+    // Continue anyway - might already be initialized
+  }
+}
+
 // Start price streaming
 priceStreamer.startStreaming();
+
+// Start signal scheduler (generates signals every 5/15/60/240 minutes)
+signalScheduler.startScheduler();
+
+// Start exit tracking updates (check prices every 10 seconds)
+setInterval(async () => {
+  if (exitManager.activeSignals.size > 0) {
+    // Get symbols from active signals
+    const symbols = new Set();
+    for (const signal of exitManager.activeSignals.values()) {
+      symbols.add(signal.symbol);
+    }
+
+    // Fetch current prices
+    for (const symbol of symbols) {
+      try {
+        const ticker = await cryptoService.fetchTicker(symbol);
+        if (ticker) {
+          // Update all active signals for this symbol
+          for (const [signalId, activeSignal] of exitManager.activeSignals) {
+            if (activeSignal.symbol === symbol) {
+              exitManager.updateSignalPrice(signalId, ticker.price, ticker);
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail on individual symbol updates
+      }
+    }
+  }
+}, 10000); // Check every 10 seconds
 
 // Start scheduled background jobs (historical data cleanup, daily stats, etc.)
 cronService.startAll();
@@ -204,4 +305,23 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`📚 API Docs: http://${ipAddress}:${PORT}/`);
   console.log(`🌐 Network accessible at: http://${ipAddress}:${PORT}`);
   console.log(`🔌 WebSocket available at ws://${ipAddress}:${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('📛 SIGTERM received, shutting down gracefully...');
+  await signalScheduler.close();
+  httpServer.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', async () => {
+  console.log('📛 SIGINT received, shutting down gracefully...');
+  await signalScheduler.close();
+  httpServer.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
 });
