@@ -5,14 +5,22 @@ class SignalEngine {
     const score = this.computeScore(indicators, chain);
     const signalType = this.determineSignalType(indicators, score, chain);
 
+    // Determine the direction for SL/Target calculation
+    // Use the determined signal type, or infer from RSI if NO TRADE
+    let calcDirection = signalType;
+    if (signalType === 'WAIT' || signalType === 'NO TRADE') {
+      const rsi = indicators.rsi5m;
+      calcDirection = rsi < 35 ? 'BUY CALL' : rsi > 65 ? 'BUY PUT' : 'BUY CALL';
+    }
+
     return {
       symbol: chain.symbol,
       price: chain.price,
-      signalType,
+      signalType: signalType === 'WAIT' ? 'NO TRADE' : signalType,
       score,
       entryPrice: chain.price,
-      stopLoss: this.computeStopLoss(chain, signalType),
-      target: this.computeTarget(chain, signalType),
+      stopLoss: this.computeStopLoss(chain, calcDirection),
+      target: this.computeTarget(chain, calcDirection),
       pcr: chain.pcr,
       maxPain: chain.maxPain,
       daysToExpiry: chain.daysToExpiry,
@@ -86,7 +94,7 @@ class SignalEngine {
 
     if (rsi < 35 && priceVsEMA > 0 && score >= 60) return 'BUY CALL';
     if (rsi > 65 && priceVsEMA < 0 && score >= 60) return 'BUY PUT';
-    return 'WAIT';
+    return 'NO TRADE';
   }
 
   static computeStopLoss(chain, signalType) {

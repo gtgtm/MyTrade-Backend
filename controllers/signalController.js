@@ -22,13 +22,31 @@ class SignalController {
         return res.json(cached);
       }
 
-      let chain;
+      let chainRows;
       try {
-        chain = await nseService.fetchOptionChain(symbol);
+        chainRows = await nseService.fetchOptionChain(symbol);
       } catch (error) {
         console.warn(`Real data unavailable for ${symbol}, using mock`);
-        chain = nseService.mockData(symbol);
+        chainRows = nseService.mockData(symbol);
       }
+
+      // Wrap chain data with metadata needed by signalEngine
+      const price = chainRows[0]?.underlyingValue || chainRows[0]?.price || 22300;
+      const totalCallOI = chainRows.reduce((sum, row) => sum + (row.CE?.openInterest || 0), 0);
+      const totalPutOI = chainRows.reduce((sum, row) => sum + (row.PE?.openInterest || 0), 0);
+      const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 1.0;
+      const maxPain = nseService.computeMaxPain(chainRows);
+      const daysToExpiry = chainRows[0]?.expiryDate ? nseService.daysToExpiry(chainRows[0].expiryDate) : null;
+
+      const chain = {
+        symbol,
+        price,
+        pcr,
+        maxPain,
+        daysToExpiry,
+        rows: chainRows,
+        isMock: false
+      };
 
       const signal = signalEngine.generate(chain, []);
 
@@ -74,12 +92,30 @@ class SignalController {
       await Promise.all(
         symbols.map(async (symbol) => {
           try {
-            let chain;
+            let chainRows;
             try {
-              chain = await nseService.fetchOptionChain(symbol);
+              chainRows = await nseService.fetchOptionChain(symbol);
             } catch {
-              chain = nseService.mockData(symbol);
+              chainRows = nseService.mockData(symbol);
             }
+
+            // Wrap chain data with metadata needed by signalEngine
+            const price = chainRows[0]?.underlyingValue || chainRows[0]?.price || 22300;
+            const totalCallOI = chainRows.reduce((sum, row) => sum + (row.CE?.openInterest || 0), 0);
+            const totalPutOI = chainRows.reduce((sum, row) => sum + (row.PE?.openInterest || 0), 0);
+            const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 1.0;
+            const maxPain = nseService.computeMaxPain(chainRows);
+            const daysToExpiry = chainRows[0]?.expiryDate ? nseService.daysToExpiry(chainRows[0].expiryDate) : null;
+
+            const chain = {
+              symbol,
+              price,
+              pcr,
+              maxPain,
+              daysToExpiry,
+              rows: chainRows,
+              isMock: false
+            };
 
             const signal = signalEngine.generate(chain, []);
 
