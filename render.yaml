@@ -3,8 +3,8 @@ services:
     name: mytradebackend
     env: node
     plan: free
-    buildCommand: npm install
-    startCommand: npm run dev
+    buildCommand: npm ci
+    startCommand: node server.js
     envVars:
       - key: NODE_ENV
         value: production
