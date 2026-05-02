@@ -78,11 +78,11 @@ class CryptoService {
 
   mockData(symbol) {
     const seeds = {
-      BTCUSDT: 65000,
-      ETHUSDT: 3100,
-      SOLUSDT: 145,
-      XRPUSDT: 0.52,
-      DOGEUSDT: 0.15
+      BTCUSDT: 78300,
+      ETHUSDT: 2300,
+      SOLUSDT: 180,
+      XRPUSDT: 2.50,
+      DOGEUSDT: 0.42
     };
     const basePrice = seeds[symbol] || 1000;
     const priceVariation = basePrice * (0.02 * Math.random() - 0.01);
