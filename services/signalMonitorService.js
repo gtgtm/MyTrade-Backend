@@ -8,41 +8,68 @@ class SignalMonitorService {
   constructor() {
     this.lastNotifiedSignals = new Map();
     this.notificationCooldown = 3600000; // 1 hour cooldown between same signal notifications
+    this.userPreferences = new Map(); // Store user preferences by userId
+    this.defaultMinScore = 60; // Default minimum score threshold
   }
 
   /**
-   * Check all NSE and Crypto signals
+   * Set user's signal monitoring preferences
    */
-  async checkAllSignals() {
-    const signals = [];
+  setUserPreferences(userId, preferences) {
+    this.userPreferences.set(userId, {
+      minScore: preferences.minScore || this.defaultMinScore,
+      symbols: preferences.symbols || ['NIFTY', 'BANKNIFTY', 'SENSEX', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+      enableNotifications: preferences.enableNotifications !== false,
+      cooldownMinutes: preferences.cooldownMinutes || 60,
+      timestamp: new Date().toISOString()
+    });
+    console.log(`✅ User preferences set for ${userId}:`, this.userPreferences.get(userId));
+  }
 
-    // Check NSE signals
-    const nseSymbols = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
-    for (const symbol of nseSymbols) {
+  /**
+   * Get user's preferences or default
+   */
+  getUserPreferences(userId) {
+    return this.userPreferences.get(userId) || {
+      minScore: this.defaultMinScore,
+      symbols: ['NIFTY', 'BANKNIFTY', 'SENSEX', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+      enableNotifications: true,
+      cooldownMinutes: 60
+    };
+  }
+
+  /**
+   * Check all NSE and Crypto signals for all users
+   */
+  async checkAllSignals(userId = null) {
+    const allSignals = [];
+
+    // If userId provided, only check symbols they care about
+    let preferences = userId ? this.getUserPreferences(userId) : null;
+    let symbolsToCheck = preferences?.symbols || ['NIFTY', 'BANKNIFTY', 'SENSEX', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+
+    // Check all symbols
+    for (const symbol of symbolsToCheck) {
       try {
-        const signal = await this.checkNSESignal(symbol);
+        let signal;
+        if (['NIFTY', 'BANKNIFTY', 'SENSEX'].includes(symbol)) {
+          signal = await this.checkNSESignal(symbol);
+        } else {
+          signal = await this.checkCryptoSignal(symbol);
+        }
+
         if (signal) {
-          signals.push(signal);
+          // Attach user preferences for evaluation
+          signal.minScore = preferences?.minScore || this.defaultMinScore;
+          signal.userId = userId;
+          allSignals.push(signal);
         }
       } catch (error) {
-        console.error(`Error checking NSE signal for ${symbol}:`, error.message);
+        console.error(`Error checking signal for ${symbol}:`, error.message);
       }
     }
 
-    // Check Crypto signals
-    const cryptoSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
-    for (const symbol of cryptoSymbols) {
-      try {
-        const signal = await this.checkCryptoSignal(symbol);
-        if (signal) {
-          signals.push(signal);
-        }
-      } catch (error) {
-        console.error(`Error checking Crypto signal for ${symbol}:`, error.message);
-      }
-    }
-
-    return signals;
+    return allSignals;
   }
 
   /**
@@ -128,36 +155,45 @@ class SignalMonitorService {
   }
 
   /**
-   * Determine if a signal is good enough to notify
+   * Determine if a signal is good enough to notify (based on user preferences)
    */
-  isGoodSignal(signal) {
+  isGoodSignal(signal, minScore = this.defaultMinScore) {
     // Consider a signal good if:
     // 1. It's a BUY signal (CALL or PUT)
-    // 2. Score is >= 70 (strong signal)
+    // 2. Score meets or exceeds user's minimum threshold
     // 3. Has valid entry, stopLoss, and target
 
     const isBuySignal = signal.signalType === 'BUY CALL' || signal.signalType === 'BUY PUT';
-    const hasHighScore = signal.score >= 70;
+    const meetsScoreThreshold = signal.score >= minScore;
     const hasValidPrices = signal.entryPrice && signal.stopLoss && signal.target;
 
-    return isBuySignal && hasHighScore && hasValidPrices;
+    return isBuySignal && meetsScoreThreshold && hasValidPrices;
   }
 
   /**
-   * Send notification to user
+   * Send notification to user based on preferences
    */
-  async notifyUser(signal) {
-    const signalKey = `${signal.symbol}_${signal.signalType}`;
+  async notifyUser(signal, userId = null) {
+    const preferences = userId ? this.getUserPreferences(userId) : { enableNotifications: true, cooldownMinutes: 60 };
+
+    // Check if notifications are enabled for user
+    if (!preferences.enableNotifications) {
+      return;
+    }
+
+    const signalKey = `${userId || 'global'}_${signal.symbol}_${signal.signalType}`;
     const lastNotified = this.lastNotifiedSignals.get(signalKey);
     const now = Date.now();
+    const cooldownMs = preferences.cooldownMinutes * 60 * 1000;
 
-    // Skip if already notified recently (cooldown)
-    if (lastNotified && (now - lastNotified) < this.notificationCooldown) {
+    // Skip if already notified recently (user's cooldown)
+    if (lastNotified && (now - lastNotified) < cooldownMs) {
       return;
     }
 
     try {
       const message = this.formatNotificationMessage(signal);
+      const minScore = signal.minScore || this.defaultMinScore;
 
       // Send push notification
       if (global.pushNotificationManager) {
@@ -168,6 +204,7 @@ class SignalMonitorService {
             symbol: signal.symbol,
             signalType: signal.signalType,
             score: signal.score,
+            minScore,
             entryPrice: signal.entryPrice,
             stopLoss: signal.stopLoss,
             target: signal.target
@@ -178,7 +215,7 @@ class SignalMonitorService {
       // Update last notified timestamp
       this.lastNotifiedSignals.set(signalKey, now);
 
-      console.log(`✅ Notification sent for ${signal.symbol}`);
+      console.log(`✅ Notification sent for ${signal.symbol} (minScore: ${minScore})`);
     } catch (error) {
       console.error(`❌ Error sending notification:`, error.message);
     }

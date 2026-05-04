@@ -224,6 +224,19 @@ router.delete('/preferences/:key', (req, res) =>
   preferencesController.deletePreference(req, res)
 );
 
+// Signal monitoring preferences endpoints
+router.post('/signal-preferences/:userId', (req, res) =>
+  preferencesController.setSignalPreferences(req, res)
+);
+
+router.get('/signal-preferences/:userId', (req, res) =>
+  preferencesController.getSignalPreferences(req, res)
+);
+
+router.get('/signal-preferences/available/symbols', (req, res) =>
+  preferencesController.getAvailableSymbols(req, res)
+);
+
 // Crypto endpoints
 router.get('/crypto/signals', (req, res) =>
   cryptoController.getAllSignals(req, res)

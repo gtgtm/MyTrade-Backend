@@ -184,9 +184,12 @@ class CronService {
       const signals = await signalMonitorService.checkAllSignals();
 
       for (const signal of signals) {
-        if (signal.isGood) {
-          console.log(`📢 GOOD SIGNAL FOUND: ${signal.symbol} - ${signal.signalType} (Score: ${signal.score})`);
-          await signalMonitorService.notifyUser(signal);
+        const minScore = signal.minScore || signalMonitorService.defaultMinScore;
+        const isGood = signalMonitorService.isGoodSignal(signal, minScore);
+
+        if (isGood) {
+          console.log(`📢 GOOD SIGNAL FOUND: ${signal.symbol} - ${signal.signalType} (Score: ${signal.score}/${minScore})`);
+          await signalMonitorService.notifyUser(signal, signal.userId);
         }
       }
     } catch (error) {
