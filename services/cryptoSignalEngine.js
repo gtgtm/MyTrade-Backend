@@ -129,144 +129,153 @@ class CryptoSignalEngine {
   }
 
   static calculateBreakdown(rsi14, ema9, ema21, price, priceChange, volumeRatio, macd, bb, volumeTrend) {
-    const components = [];
-
-    // RSI component
+    // Trend component (RSI-based)
+    let trendComponent;
     if (rsi14 < 30) {
-      components.push({
+      trendComponent = {
         label: 'RSI (Oversold)',
         score: 15,
         maxScore: 25,
         direction: 'BULLISH',
         reason: `RSI at ${rsi14.toFixed(1)} indicates oversold conditions`
-      });
+      };
     } else if (rsi14 > 70) {
-      components.push({
+      trendComponent = {
         label: 'RSI (Overbought)',
         score: 0,
         maxScore: 25,
         direction: 'BEARISH',
         reason: `RSI at ${rsi14.toFixed(1)} indicates overbought conditions`
-      });
+      };
     } else {
-      components.push({
+      trendComponent = {
         label: 'RSI (Neutral)',
         score: 5,
         maxScore: 25,
         direction: null,
         reason: `RSI at ${rsi14.toFixed(1)} in neutral zone`
-      });
+      };
     }
 
-    // EMA component
+    // Confirmation component (EMA alignment)
+    let confirmationComponent;
     if (price > ema9 && ema9 > ema21) {
-      components.push({
+      confirmationComponent = {
         label: 'EMA Alignment',
         score: 20,
         maxScore: 20,
         direction: 'BULLISH',
         reason: 'Price > EMA9 > EMA21 (uptrend confirmation)'
-      });
+      };
     } else if (price < ema9 && ema9 < ema21) {
-      components.push({
+      confirmationComponent = {
         label: 'EMA Alignment',
         score: 20,
         maxScore: 20,
         direction: 'BEARISH',
         reason: 'Price < EMA9 < EMA21 (downtrend confirmation)'
-      });
+      };
     } else {
-      components.push({
+      confirmationComponent = {
         label: 'EMA Alignment',
         score: 10,
         maxScore: 20,
         direction: null,
         reason: 'EMA not fully aligned'
-      });
+      };
     }
 
-    // Volume component
+    // Entry component (Volume ratio)
+    let entryComponent;
     if (volumeRatio > 0.6) {
-      components.push({
+      entryComponent = {
         label: 'Volume Ratio',
         score: 15,
         maxScore: 15,
         direction: 'BULLISH',
         reason: `Buy volume ${(volumeRatio * 100).toFixed(1)}% - Strong buy pressure`
-      });
+      };
     } else if (volumeRatio < 0.4) {
-      components.push({
+      entryComponent = {
         label: 'Volume Ratio',
         score: 15,
         maxScore: 15,
         direction: 'BEARISH',
         reason: `Buy volume ${(volumeRatio * 100).toFixed(1)}% - Weak buy pressure`
-      });
+      };
     } else {
-      components.push({
+      entryComponent = {
         label: 'Volume Ratio',
         score: 7,
         maxScore: 15,
         direction: null,
         reason: `Buy volume ${(volumeRatio * 100).toFixed(1)}% - Balanced`
-      });
+      };
     }
 
-    // MACD component
+    // PCR component (MACD)
+    let pcrComponent;
     if (macd.histogram > 0 && macd.macd > macd.signal) {
-      components.push({
+      pcrComponent = {
         label: 'MACD',
         score: 20,
         maxScore: 20,
         direction: 'BULLISH',
         reason: 'MACD above signal line with positive histogram (bullish momentum)'
-      });
+      };
     } else if (macd.histogram < 0 && macd.macd < macd.signal) {
-      components.push({
+      pcrComponent = {
         label: 'MACD',
         score: 20,
         maxScore: 20,
         direction: 'BEARISH',
         reason: 'MACD below signal line with negative histogram (bearish momentum)'
-      });
+      };
     } else {
-      components.push({
+      pcrComponent = {
         label: 'MACD',
         score: 10,
         maxScore: 20,
         direction: null,
         reason: 'MACD showing mixed signals'
-      });
+      };
     }
 
-    // Bollinger Bands component
+    // MaxPain component (Bollinger Bands)
+    let maxPainComponent;
     if (price < bb.lower) {
-      components.push({
+      maxPainComponent = {
         label: 'Bollinger Bands',
         score: 10,
         maxScore: 10,
         direction: 'BULLISH',
         reason: 'Price below lower band (potential reversal upward)'
-      });
+      };
     } else if (price > bb.upper) {
-      components.push({
+      maxPainComponent = {
         label: 'Bollinger Bands',
         score: 10,
         maxScore: 10,
         direction: 'BEARISH',
         reason: 'Price above upper band (potential reversal downward)'
-      });
+      };
     } else {
-      components.push({
+      maxPainComponent = {
         label: 'Bollinger Bands',
         score: 5,
         maxScore: 10,
         direction: null,
         reason: 'Price within normal bands'
-      });
+      };
     }
 
-    return components;
+    return {
+      trend: trendComponent,
+      confirmation: confirmationComponent,
+      entry: entryComponent,
+      pcr: pcrComponent,
+      maxPain: maxPainComponent
+    };
   }
 
   static macd(closes, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
@@ -330,7 +339,43 @@ class CryptoSignalEngine {
       daysToExpiry: null,
       generatedAt: new Date().toISOString(),
       isMock: true,
-      breakdown: [],
+      breakdown: {
+        trend: {
+          label: 'No Data',
+          score: 0,
+          maxScore: 25,
+          direction: null,
+          reason: 'Insufficient data'
+        },
+        confirmation: {
+          label: 'No Data',
+          score: 0,
+          maxScore: 20,
+          direction: null,
+          reason: 'Insufficient data'
+        },
+        entry: {
+          label: 'No Data',
+          score: 0,
+          maxScore: 15,
+          direction: null,
+          reason: 'Insufficient data'
+        },
+        pcr: {
+          label: 'No Data',
+          score: 0,
+          maxScore: 20,
+          direction: null,
+          reason: 'Insufficient data'
+        },
+        maxPain: {
+          label: 'No Data',
+          score: 0,
+          maxScore: 10,
+          direction: null,
+          reason: 'Insufficient data'
+        }
+      },
       indicators: {}
     };
   }
