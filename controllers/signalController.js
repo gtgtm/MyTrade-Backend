@@ -55,7 +55,10 @@ class SignalController {
 
       const response = {
         success: true,
-        data: signal,
+        data: {
+          ...signal,
+          chain: chainRows
+        },
         isMock: chain.isMock,
         cached: false,
         timestamp: new Date().toISOString()
@@ -125,6 +128,7 @@ class SignalController {
             signals.push({
               symbol,
               ...signal,
+              chain: chainRows,
               isMock: chain.isMock
             });
           } catch (error) {
