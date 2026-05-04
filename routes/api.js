@@ -10,6 +10,7 @@ import mlController from '../controllers/mlController.js';
 import preferencesController from '../controllers/preferencesController.js';
 import comprehensiveSignalController from '../controllers/comprehensiveSignalController.js';
 import cryptoController from '../controllers/cryptoController.js';
+import tradingJournalController from '../controllers/tradingJournalController.js';
 import Backtester from '../services/backtester.js';
 import WalkForwardEngine from '../services/walkForwardEngine.js';
 
@@ -630,5 +631,42 @@ router.post('/push/test', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Trading Journal endpoints - Track your trades and P&L
+router.post('/trades/record', (req, res) =>
+  tradingJournalController.recordTrade(req, res)
+);
+
+router.post('/trades/:tradeId/close', (req, res) =>
+  tradingJournalController.closeTrade(req, res)
+);
+
+router.get('/trades/:userId', (req, res) =>
+  tradingJournalController.getUserTrades(req, res)
+);
+
+router.get('/trades/:userId/stats', (req, res) =>
+  tradingJournalController.getStats(req, res)
+);
+
+router.get('/trades/:userId/daily/:date', (req, res) =>
+  tradingJournalController.getDailyPnl(req, res)
+);
+
+router.get('/trades/:userId/weekly', (req, res) =>
+  tradingJournalController.getWeeklyStats(req, res)
+);
+
+router.get('/trades/:userId/monthly', (req, res) =>
+  tradingJournalController.getMonthlyStats(req, res)
+);
+
+router.get('/trades/:userId/symbol/:symbol', (req, res) =>
+  tradingJournalController.getTradesBySymbol(req, res)
+);
+
+router.delete('/trades/:tradeId', (req, res) =>
+  tradingJournalController.cancelTrade(req, res)
+);
 
 export default router;
