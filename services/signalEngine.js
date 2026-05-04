@@ -63,37 +63,97 @@ class SignalEngine {
 
   static computeScore(indicators, chain) {
     let score = 50;
+    let confirmations = 0; // Track confluence
 
-    // RSI scoring
+    // RSI scoring (must be oversold/overbought)
     const rsi5m = indicators.rsi5m;
-    if (rsi5m < 30) score += 15;
-    else if (rsi5m < 40) score += 10;
-    else if (rsi5m > 70) score -= 15;
-    else if (rsi5m > 60) score -= 10;
+    if (rsi5m < 30) {
+      score += 15;
+      confirmations++;
+    } else if (rsi5m < 40) {
+      score += 10;
+      confirmations++;
+    } else if (rsi5m > 70) {
+      score -= 15;
+      confirmations++;
+    } else if (rsi5m > 60) {
+      score -= 10;
+      confirmations++;
+    }
 
-    // EMA alignment
-    if ((chain.price > indicators.ema5m) && (indicators.ema5m > indicators.ema15m)) score += 10;
-    if ((chain.price < indicators.ema5m) && (indicators.ema5m < indicators.ema15m)) score -= 10;
+    // EMA alignment (price > 5m EMA > 15m EMA = uptrend)
+    const priceAboveEma5m = chain.price > indicators.ema5m;
+    const ema5mAboveEma15m = indicators.ema5m > indicators.ema15m;
+    const ema15mAboveEma1h = indicators.ema15m > indicators.ema1h;
 
-    // PCR scoring
-    if (chain.pcr > 1.12) score += 8;
-    else if (chain.pcr < 0.88) score -= 8;
+    if (priceAboveEma5m && ema5mAboveEma15m) {
+      score += 12;
+      confirmations++;
+    }
+    if (ema5mAboveEma15m && ema15mAboveEma1h) {
+      score += 8;
+      confirmations++;
+    }
+
+    // PCR scoring (must be extreme)
+    if (chain.pcr > 1.20) {
+      score += 10;
+      confirmations++;
+    } else if (chain.pcr < 0.80) {
+      score += 10;
+      confirmations++;
+    }
 
     // Max Pain proximity (closer = stronger signal)
     const distanceToMP = Math.abs(chain.price - chain.maxPain);
     const percentFromMP = (distanceToMP / chain.price) * 100;
-    if (percentFromMP < 1) score += 5;
-    else if (percentFromMP > 3) score -= 5;
+    if (percentFromMP < 0.5) {
+      score += 8;
+      confirmations++;
+    } else if (percentFromMP < 2) {
+      score += 4;
+    }
 
-    return Math.max(0, Math.min(100, score));
+    // Store confirmation count in score object
+    score = Math.max(0, Math.min(100, score));
+
+    // Add confluence indicator (will be used in signal type determination)
+    chain._confirmations = confirmations;
+
+    return score;
   }
 
   static determineSignalType(indicators, score, chain) {
     const rsi = indicators.rsi5m;
-    const priceVsEMA = Math.sign(chain.price - indicators.ema5m);
+    const confirmations = chain._confirmations || 0;
 
-    if (rsi < 35 && priceVsEMA > 0 && score >= 60) return 'BUY CALL';
-    if (rsi > 65 && priceVsEMA < 0 && score >= 60) return 'BUY PUT';
+    // STRICT: Require 4+ confirmations (confluence) for strong signal
+    // This filters out noisy signals
+    const minConfirmations = 4;
+
+    const priceAboveEma5m = chain.price > indicators.ema5m;
+    const ema5mAboveEma15m = indicators.ema5m > indicators.ema15m;
+
+    // BUY CALL: Oversold + uptrend + strong confluence
+    if (rsi < 35 &&
+        priceAboveEma5m &&
+        ema5mAboveEma15m &&
+        score >= 70 &&
+        confirmations >= minConfirmations) {
+      return 'BUY CALL';
+    }
+
+    // BUY PUT: Overbought + downtrend + strong confluence
+    if (rsi > 65 &&
+        chain.price < indicators.ema5m &&
+        indicators.ema5m < indicators.ema15m &&
+        score >= 70 &&
+        confirmations >= minConfirmations) {
+      return 'BUY PUT';
+    }
+
+    // If score is good but confirmations are low, return WAIT (no signal)
+    // This prevents trading weak setups
     return 'NO TRADE';
   }
 
