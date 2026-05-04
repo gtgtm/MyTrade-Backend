@@ -4,10 +4,12 @@
  */
 
 import historicalDataService from './historicalDataService.js';
+import signalMonitorService from './signalMonitorService.js';
 
 class CronService {
   constructor() {
     this.jobs = new Map();
+    this.lastSignalCheck = {};
   }
 
   /**
@@ -15,6 +17,9 @@ class CronService {
    */
   startAll() {
     console.log('⏰ Starting scheduled jobs...');
+
+    // Signal monitoring: Check every 5 minutes for good signals
+    this.scheduleInterval('signalMonitor', 5 * 60 * 1000, () => this.monitorSignals());
 
     // Daily cleanup: Run at 11 PM IST (5:30 PM UTC)
     this.scheduleDaily('cleanup', 23, 0, () => this.cleanupOldData());
@@ -29,6 +34,20 @@ class CronService {
     this.scheduleDaily('weeklyAnalytics', 9, 0, () => this.generateWeeklyAnalytics());
 
     console.log('✅ Scheduled jobs started');
+  }
+
+  /**
+   * Schedule a task to run at fixed intervals
+   */
+  scheduleInterval(jobName, intervalMs, callback) {
+    const intervalId = setInterval(() => {
+      callback().catch(error => {
+        console.error(`❌ Error in scheduled job ${jobName}:`, error.message);
+      });
+    }, intervalMs);
+
+    this.jobs.set(jobName, intervalId);
+    console.log(`⏰ Scheduled: ${jobName} every ${intervalMs / 1000} seconds`);
   }
 
   /**
@@ -154,6 +173,24 @@ class CronService {
     } catch (error) {
       console.error('❌ Weekly analytics generation failed:', error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Monitor signals and notify on good signals
+   */
+  async monitorSignals() {
+    try {
+      const signals = await signalMonitorService.checkAllSignals();
+
+      for (const signal of signals) {
+        if (signal.isGood) {
+          console.log(`📢 GOOD SIGNAL FOUND: ${signal.symbol} - ${signal.signalType} (Score: ${signal.score})`);
+          await signalMonitorService.notifyUser(signal);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error monitoring signals:', error.message);
     }
   }
 
