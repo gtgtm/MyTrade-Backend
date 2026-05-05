@@ -16,64 +16,9 @@ class SignalMonitor {
     }
 
     async checkSignals() {
-        const symbols = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
         const highScoreSignals = [];
 
-        for (const symbol of symbols) {
-            try {
-                // Fetch latest option chain
-                let chainRows;
-                try {
-                    chainRows = await nseService.fetchOptionChain(symbol);
-                } catch (error) {
-                    console.warn(`⚠️ [SignalMonitor] Real data unavailable for ${symbol}, using mock`);
-                    chainRows = nseService.mockData(symbol);
-                }
-
-                // Prepare data
-                const price = chainRows[0]?.underlyingValue || chainRows[0]?.price || 22300;
-                const totalCallOI = chainRows.reduce((sum, row) =>
-                    sum + (row.CE?.openInterest || 0), 0);
-                const totalPutOI = chainRows.reduce((sum, row) =>
-                    sum + (row.PE?.openInterest || 0), 0);
-                const pcr = totalCallOI > 0 ? totalPutOI / totalCallOI : 1.0;
-                const maxPain = nseService.computeMaxPain(chainRows);
-                const daysToExpiry = chainRows[0]?.expiryDate ? nseService.daysToExpiry(chainRows[0].expiryDate) : null;
-
-                const chain = {
-                    symbol,
-                    price,
-                    pcr,
-                    callOI: totalCallOI,
-                    putOI: totalPutOI,
-                    maxPain,
-                    daysToExpiry,
-                    rows: chainRows,
-                    isMock: false
-                };
-
-                // Generate signal
-                const signal = signalEngine.generate(chain, []);
-
-                console.log(`📊 [SignalMonitor] ${symbol}: Score ${signal.score}, Signal: ${signal.signalType}`);
-
-                // Check if high confidence (80+)
-                if (signal.score >= 80) {
-                    console.log(`🎯 [SignalMonitor] HIGH CONFIDENCE SIGNAL FOUND: ${symbol} - ${signal.signalType}`);
-                    highScoreSignals.push({
-                        symbol,
-                        signal,
-                        price,
-                        confidence: signal.score,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            } catch (error) {
-                console.error(`❌ [SignalMonitor] Error checking ${symbol}:`, error);
-            }
-        }
-
-        // Also check crypto signals
+        // Check crypto signals only
         await this.checkCryptoSignals(highScoreSignals);
 
         // Log results
