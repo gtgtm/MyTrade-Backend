@@ -21,6 +21,12 @@ router.get('/health', signalController.healthCheck);
 router.get('/signals', signalController.getSignals);
 router.get('/signals/:symbol', signalController.getSignal);
 router.get('/signals/quote/:symbol', signalController.getQuote);
+router.get('/signals/supported-symbols', (req, res) => {
+  res.json({
+    success: true,
+    data: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]
+  });
+});
 
 // Statistics endpoints
 router.get('/stats', statsController.getStats);
