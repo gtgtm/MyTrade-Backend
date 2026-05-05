@@ -16,6 +16,7 @@ import PushNotificationManager from './services/pushNotificationManager.js';
 import cronService from './services/cronService.js';
 import cryptoService from './services/cryptoService.js';
 import database from './services/database.js';
+import signalMonitor from './services/signalMonitor.js';
 
 dotenv.config();
 
@@ -286,6 +287,9 @@ setInterval(async () => {
 
 // Start scheduled background jobs (historical data cleanup, daily stats, etc.)
 cronService.startAll();
+
+// Start background signal monitoring (check every 5 minutes for high-score signals)
+signalMonitor.startMonitoring();
 
 // Start server - listen on all network interfaces
 httpServer.listen(PORT, '0.0.0.0', () => {
