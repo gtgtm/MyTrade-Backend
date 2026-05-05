@@ -391,6 +391,388 @@ class LocalSignalFilter {
       percentTradeable: Math.round((trades / filteredSignals.length) * 100)
     };
   }
+
+  // ============ ADVANCED VALIDATORS ============
+
+  /**
+   * Volatility Validator - Is volatility optimal for trading?
+   */
+  static validateVolatility(signal, historicalData) {
+    if (!historicalData || historicalData.length < 20) {
+      return { score: 0, reason: 'Insufficient data' };
+    }
+
+    const closes = historicalData.slice(-20).map(d => d.close || d.price);
+    const returns = [];
+
+    for (let i = 1; i < closes.length; i++) {
+      returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+    }
+
+    const volatility = Math.sqrt(
+      returns.reduce((sum, r) => sum + r * r, 0) / returns.length
+    );
+
+    const volatilityPercent = volatility * 100;
+
+    if (volatilityPercent < 0.5) {
+      return { score: 5, level: 'TOO_CALM', reason: 'Low volatility = low conviction' };
+    }
+
+    if (volatilityPercent > 3) {
+      return { score: 5, level: 'EXTREME', reason: 'High volatility = risk' };
+    }
+
+    if (volatilityPercent >= 0.5 && volatilityPercent <= 1) {
+      return { score: 15, level: 'OPTIMAL', reason: 'Volatility in sweet spot' };
+    }
+
+    if (volatilityPercent > 1 && volatilityPercent <= 2) {
+      return { score: 10, level: 'ELEVATED', reason: 'Higher volatility, ok' };
+    }
+
+    return { score: 0, level: 'UNKNOWN', reason: 'Volatility unclear' };
+  }
+
+  /**
+   * Trend Strength Validator - How strong is the trend?
+   */
+  static validateTrendStrength(signal, historicalData) {
+    if (!historicalData || historicalData.length < 30) {
+      return { score: 0, reason: 'Insufficient data' };
+    }
+
+    const closes = historicalData.map(d => d.close || d.price);
+    const n = closes.length;
+
+    const xMean = (n - 1) / 2;
+    const yMean = closes.reduce((a, b) => a + b) / n;
+
+    let numerator = 0, denominator = 0;
+    for (let i = 0; i < n; i++) {
+      numerator += (i - xMean) * (closes[i] - yMean);
+      denominator += Math.pow(i - xMean, 2);
+    }
+
+    const slope = numerator / denominator;
+
+    const predictions = closes.map((_, i) => yMean + slope * (i - xMean));
+    const ssRes = closes.reduce(
+      (sum, val, i) => sum + Math.pow(val - predictions[i], 2),
+      0
+    );
+    const ssTot = closes.reduce(
+      (sum, val) => sum + Math.pow(val - yMean, 2),
+      0
+    );
+    const rSquared = 1 - ssRes / ssTot;
+
+    if (rSquared > 0.7) {
+      return {
+        score: 20,
+        strength: 'VERY_STRONG',
+        rSquared: rSquared.toFixed(2),
+        reason: 'Excellent trend definition'
+      };
+    }
+
+    if (rSquared > 0.5) {
+      return {
+        score: 15,
+        strength: 'STRONG',
+        rSquared: rSquared.toFixed(2),
+        reason: 'Clear trend direction'
+      };
+    }
+
+    if (rSquared > 0.3) {
+      return {
+        score: 8,
+        strength: 'MODERATE',
+        rSquared: rSquared.toFixed(2),
+        reason: 'Some trend definition'
+      };
+    }
+
+    if (rSquared > 0.1) {
+      return {
+        score: 3,
+        strength: 'WEAK',
+        rSquared: rSquared.toFixed(2),
+        reason: 'Minimal trend'
+      };
+    }
+
+    return {
+      score: 0,
+      strength: 'NO_TREND',
+      rSquared: rSquared.toFixed(2),
+      reason: 'Ranging market'
+    };
+  }
+
+  /**
+   * Momentum Divergence Validator - Is momentum aligned with price?
+   */
+  static validateMomentumDivergence(signal, historicalData) {
+    if (!historicalData || historicalData.length < 14) {
+      return { score: 0, reason: 'Insufficient data' };
+    }
+
+    const closes = historicalData.map(d => d.close || d.price);
+    const rsi = this.calculateRSI(closes, 14);
+
+    const recentClose = closes[closes.length - 1];
+    const oldClose = closes[Math.max(0, closes.length - 10)];
+    const priceDirection = recentClose >= oldClose ? 'UP' : 'DOWN';
+
+    if (priceDirection === 'UP' && rsi < 30) {
+      return {
+        score: 12,
+        divergence: 'BULLISH',
+        rsi: rsi.toFixed(1),
+        reason: 'Price rising but oversold = strong reversal signal'
+      };
+    }
+
+    if (priceDirection === 'DOWN' && rsi > 70) {
+      return {
+        score: 12,
+        divergence: 'BEARISH',
+        rsi: rsi.toFixed(1),
+        reason: 'Price falling but overbought = strong reversal signal'
+      };
+    }
+
+    if (priceDirection === 'UP' && rsi > 50) {
+      return {
+        score: 5,
+        divergence: 'NONE',
+        alignment: 'CONFIRMED',
+        rsi: rsi.toFixed(1),
+        reason: 'Price and momentum aligned'
+      };
+    }
+
+    if (priceDirection === 'DOWN' && rsi < 50) {
+      return {
+        score: 5,
+        divergence: 'NONE',
+        alignment: 'CONFIRMED',
+        rsi: rsi.toFixed(1),
+        reason: 'Price and momentum aligned'
+      };
+    }
+
+    return {
+      score: 0,
+      divergence: 'NEUTRAL',
+      rsi: rsi.toFixed(1),
+      reason: 'No clear divergence or confirmation'
+    };
+  }
+
+  /**
+   * Support/Resistance Validator - Is price near key levels?
+   */
+  static validateSupportResistance(signal, historicalData) {
+    if (!historicalData || historicalData.length < 20) {
+      return { score: 0, reason: 'Insufficient data' };
+    }
+
+    const prices = historicalData.map(d => d.close || d.price);
+    const currentPrice = signal.price;
+
+    const recent20 = prices.slice(-20);
+    const support = Math.min(...recent20);
+    const resistance = Math.max(...recent20);
+
+    const distToSupport = ((currentPrice - support) / currentPrice) * 100;
+    const distToResistance = ((resistance - currentPrice) / currentPrice) * 100;
+
+    if (distToSupport < 0.5) {
+      return {
+        score: 12,
+        level: 'SUPPORT',
+        distance: distToSupport.toFixed(2) + '%',
+        reason: 'Price at support level - high reversal probability'
+      };
+    }
+
+    if (distToResistance < 0.5) {
+      return {
+        score: 12,
+        level: 'RESISTANCE',
+        distance: distToResistance.toFixed(2) + '%',
+        reason: 'Price at resistance level - high rejection probability'
+      };
+    }
+
+    if (distToSupport < 2) {
+      return {
+        score: 6,
+        level: 'NEAR_SUPPORT',
+        distance: distToSupport.toFixed(2) + '%',
+        reason: 'Approaching support'
+      };
+    }
+
+    if (distToResistance < 2) {
+      return {
+        score: 6,
+        level: 'NEAR_RESISTANCE',
+        distance: distToResistance.toFixed(2) + '%',
+        reason: 'Approaching resistance'
+      };
+    }
+
+    return {
+      score: 0,
+      level: 'MID_RANGE',
+      distance: 'N/A',
+      reason: 'Not near key levels'
+    };
+  }
+
+  /**
+   * Volume Confirmation Validator - Is volume backing the move?
+   */
+  static validateVolumeConfirmation(signal, historicalData) {
+    if (!historicalData || historicalData.length < 10) {
+      return { score: 0, reason: 'Insufficient volume data' };
+    }
+
+    const recentData = historicalData.slice(-10);
+    const volumes = recentData.map(d => d.volume || 0);
+
+    if (volumes.every(v => v === 0)) {
+      return { score: 0, reason: 'No volume data available' };
+    }
+
+    const avgVolume = volumes.reduce((a, b) => a + b) / volumes.length;
+    const currentVolume = volumes[volumes.length - 1];
+
+    const closes = recentData.map(d => d.close || d.price);
+    const currentPrice = closes[closes.length - 1];
+    const prevPrice = closes[Math.max(0, closes.length - 2)];
+    const priceMovedUp = currentPrice > prevPrice;
+
+    const volumeRatio = currentVolume / avgVolume;
+
+    if (volumeRatio > 1.3 && priceMovedUp) {
+      return {
+        score: 15,
+        confirmation: 'STRONG_BULLISH',
+        volumeRatio: volumeRatio.toFixed(2),
+        reason: 'High volume on up move - strong conviction'
+      };
+    }
+
+    if (volumeRatio > 1.3 && !priceMovedUp) {
+      return {
+        score: 15,
+        confirmation: 'STRONG_BEARISH',
+        volumeRatio: volumeRatio.toFixed(2),
+        reason: 'High volume on down move - strong conviction'
+      };
+    }
+
+    if (volumeRatio > 1.0 && volumeRatio <= 1.3) {
+      return {
+        score: 8,
+        confirmation: 'MODERATE',
+        volumeRatio: volumeRatio.toFixed(2),
+        reason: 'Moderate volume increase'
+      };
+    }
+
+    if (volumeRatio < 0.7) {
+      return {
+        score: -5,
+        confirmation: 'WEAK',
+        volumeRatio: volumeRatio.toFixed(2),
+        reason: 'Low volume - weak signal'
+      };
+    }
+
+    return {
+      score: 0,
+      confirmation: 'NEUTRAL',
+      volumeRatio: volumeRatio.toFixed(2),
+      reason: 'Normal volume'
+    };
+  }
+
+  /**
+   * Calculate RSI for momentum analysis
+   */
+  static calculateRSI(closes, period = 14) {
+    if (closes.length < period + 1) return 50;
+
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+      const change = closes[closes.length - period + i] - closes[closes.length - period + i - 1];
+      if (change > 0) gains += change;
+      else losses += Math.abs(change);
+    }
+
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+
+    if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
+
+    const rs = avgGain / avgLoss;
+    return 100 - 100 / (1 + rs);
+  }
+
+  /**
+   * Filter signal with all advanced validators
+   */
+  static filterSignalWithValidators(signal, historicalData = []) {
+    const baseResult = this.filterSignal(signal);
+
+    let validatorScore = 0;
+    const validators = {};
+
+    validators.volatility = this.validateVolatility(signal, historicalData);
+    validatorScore += validators.volatility.score;
+
+    validators.trend = this.validateTrendStrength(signal, historicalData);
+    validatorScore += validators.trend.score;
+
+    validators.momentum = this.validateMomentumDivergence(signal, historicalData);
+    validatorScore += validators.momentum.score;
+
+    validators.levels = this.validateSupportResistance(signal, historicalData);
+    validatorScore += validators.levels.score;
+
+    validators.volume = this.validateVolumeConfirmation(signal, historicalData);
+    validatorScore += validators.volume.score;
+
+    const finalConfidence = Math.min(100, baseResult.filteredConfidence + validatorScore);
+
+    return {
+      ...baseResult,
+      validatorScore,
+      validators,
+      enhancedConfidence: Math.round(finalConfidence),
+      enhancedRecommendation:
+        finalConfidence >= 80 ? 'STRONG_BUY' :
+        finalConfidence >= 70 ? 'BUY' :
+        finalConfidence >= 60 ? 'WAIT' :
+        finalConfidence >= 50 ? 'CAUTION' :
+        'SKIP',
+      breakdownByValidator: {
+        baseFilter: baseResult.filteredConfidence,
+        volatilityBoost: validators.volatility.score,
+        trendBoost: validators.trend.score,
+        momentumBoost: validators.momentum.score,
+        levelBoost: validators.levels.score,
+        volumeBoost: validators.volume.score,
+        totalBoost: validatorScore
+      }
+    };
+  }
 }
 
 export default LocalSignalFilter;
