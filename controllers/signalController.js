@@ -199,6 +199,43 @@ class SignalController {
       version: '1.0.0'
     });
   }
+
+  static async getQuote(req, res) {
+    const { symbol } = req.params;
+
+    if (!symbol || !['NIFTY', 'BANKNIFTY', 'SENSEX'].includes(symbol)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid symbol. Use NIFTY, BANKNIFTY, or SENSEX'
+      });
+    }
+
+    try {
+      let chainRows;
+      try {
+        chainRows = await nseService.fetchOptionChain(symbol);
+      } catch (error) {
+        console.warn(`Real data unavailable for ${symbol}, using mock`);
+        chainRows = nseService.mockData(symbol);
+      }
+
+      const price = chainRows[0]?.underlyingValue || chainRows[0]?.price || 22300;
+
+      res.json({
+        success: true,
+        price,
+        symbol,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Error in getQuote for ${symbol}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch quote',
+        message: error.message
+      });
+    }
+  }
 }
 
 export default SignalController;

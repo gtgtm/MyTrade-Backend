@@ -20,6 +20,7 @@ const router = express.Router();
 router.get('/health', signalController.healthCheck);
 router.get('/signals', signalController.getSignals);
 router.get('/signals/:symbol', signalController.getSignal);
+router.get('/signals/quote/:symbol', signalController.getQuote);
 
 // Statistics endpoints
 router.get('/stats', statsController.getStats);
