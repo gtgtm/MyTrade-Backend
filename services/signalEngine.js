@@ -22,6 +22,8 @@ class SignalEngine {
       stopLoss: this.computeStopLoss(chain, calcDirection),
       target: this.computeTarget(chain, calcDirection),
       pcr: chain.pcr,
+      callOI: chain.callOI,
+      putOI: chain.putOI,
       maxPain: chain.maxPain,
       daysToExpiry: chain.daysToExpiry,
       generatedAt: new Date().toISOString(),
