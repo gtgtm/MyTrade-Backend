@@ -1,6 +1,7 @@
 import nseService from '../services/nseService.js';
 import signalEngine from '../services/signalEngine.js';
 import db from '../services/signalDatabase.js';
+import LocalSignalFilter from '../services/localSignalFilter.js';
 
 class SignalController {
   static async getSignal(req, res) {
@@ -50,13 +51,30 @@ class SignalController {
 
       const signal = signalEngine.generate(chain, []);
 
+      // [NEW] Filter signal locally using confluence analysis
+      const filtered = LocalSignalFilter.filterSignal(signal);
+
+      // Merge original signal with filtered analysis
+      const enhancedSignal = {
+        ...signal,
+        // Add filtered results
+        filteredConfidence: filtered.filteredConfidence,
+        filterRecommendation: filtered.recommendation,
+        filterQuality: filtered.quality,
+        confirmations: filtered.confirmations,
+        filterRationale: filtered.rationale,
+        filterFactors: filtered.factors,
+        actionGuidance: filtered.actionGuidance,
+        breakdown: filtered.breakdown
+      };
+
       // Save signal to database for tracking
-      db.saveSignal(signal);
+      db.saveSignal(enhancedSignal);
 
       const response = {
         success: true,
         data: {
-          ...signal,
+          ...enhancedSignal,
           chain: chainRows
         },
         isMock: chain.isMock,
@@ -122,12 +140,23 @@ class SignalController {
 
             const signal = signalEngine.generate(chain, []);
 
+            // [NEW] Filter signal locally
+            const filtered = LocalSignalFilter.filterSignal(signal);
+
+            const enhancedSignal = {
+              ...signal,
+              filteredConfidence: filtered.filteredConfidence,
+              filterRecommendation: filtered.recommendation,
+              filterQuality: filtered.quality,
+              confirmations: filtered.confirmations
+            };
+
             // Save signal to database
-            db.saveSignal(signal);
+            db.saveSignal(enhancedSignal);
 
             signals.push({
               symbol,
-              ...signal,
+              ...enhancedSignal,
               chain: chainRows,
               isMock: chain.isMock
             });
