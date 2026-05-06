@@ -31,22 +31,22 @@ class CryptoService {
         return null;
       }
 
-      const res = await this.fallbackClient.get('/simple/price', {
-        params: {
-          ids: coinId,
-          vs_currencies: 'usd'
-        }
-      });
+      console.log(`[CryptoService] Fetching CoinGecko price for ${symbol} (ID: ${coinId})...`);
+
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
+      const res = await axios.get(url, { timeout: 10000 });
 
       const price = res.data?.[coinId]?.usd;
+      console.log(`[CryptoService] CoinGecko response for ${coinId}:`, res.data);
+
       if (price && price > 0) {
-        console.log(`[CryptoService] CoinGecko price for ${symbol} (${coinId}): $${price}`);
+        console.log(`[CryptoService] ✅ CoinGecko price for ${symbol} (${coinId}): $${price}`);
         return price;
       } else {
-        console.error(`[CryptoService] Invalid price from CoinGecko for ${symbol}: ${price}`);
+        console.error(`[CryptoService] ❌ Invalid price from CoinGecko for ${symbol}: ${price}`);
       }
     } catch (err) {
-      console.error(`[CryptoService] CoinGecko fallback failed for ${symbol}:`, err.message, err.response?.status);
+      console.error(`[CryptoService] ❌ CoinGecko failed for ${symbol}:`, err.message);
     }
     return null;
   }
