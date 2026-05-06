@@ -255,6 +255,23 @@ router.get('/crypto/signals/:symbol', (req, res) =>
   cryptoController.getSignal(req, res)
 );
 
+// DEBUG: Test endpoint to check raw Binance price
+router.get('/crypto/test/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
+  try {
+    const cryptoService = (await import('../services/cryptoService.js')).default;
+    const ticker = await cryptoService.fetchTicker(normalizedSymbol);
+    res.json({
+      symbol: normalizedSymbol,
+      binancePrice: ticker.price,
+      message: 'Raw price from Binance API'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/crypto/accuracy/:symbol', (req, res) =>
   cryptoController.getAccuracyMetrics(req, res)
 );
