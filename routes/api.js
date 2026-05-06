@@ -260,15 +260,33 @@ router.get('/crypto/test/coingecko/:symbol', async (req, res) => {
   const { symbol } = req.params;
   const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
   try {
+    const axios = (await import('axios')).default;
+
+    // Try getFallbackPrice first
     const cryptoService = (await import('../services/cryptoService.js')).default;
-    const price = await cryptoService.getFallbackPrice(normalizedSymbol);
+    const price1 = await cryptoService.getFallbackPrice(normalizedSymbol);
+
+    // Also try direct CoinGecko call
+    const coinGeckoMap = {
+      'SOLUSDT': 'solana',
+      'BTCUSDT': 'bitcoin',
+      'ETHUSDT': 'ethereum'
+    };
+    const coinId = coinGeckoMap[normalizedSymbol];
+    let price2 = null;
+    if (coinId) {
+      const cg = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+      price2 = cg.data?.[coinId]?.usd;
+    }
+
     res.json({
       symbol: normalizedSymbol,
-      coingeckoPrice: price,
-      message: 'Price from CoinGecko API'
+      getFallbackPriceResult: price1,
+      directCoinGeckoResult: price2,
+      message: 'Testing CoinGecko price methods'
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
