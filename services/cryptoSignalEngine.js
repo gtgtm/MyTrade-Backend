@@ -94,22 +94,35 @@ class CryptoSignalEngine {
     const validForHours = 4; // 4-hour validity window
     const validUntil = new Date(now.getTime() + validForHours * 60 * 60 * 1000);
 
+    // Ensure all prices are in USD (Binance native, not converted)
+    // Validate that prices are reasonable (not converted to INR)
+    const validatePrice = (p) => {
+      // For crypto, prices should be reasonable USD values
+      // If price > 100000 and symbol is for low-value crypto, it's likely INR converted
+      if (p > 100000 && (symbol.includes('BONK') || symbol.includes('SHIB') || symbol.includes('PEPE') || symbol.includes('FLOKI'))) {
+        console.warn(`[CryptoSignalEngine] Price validation: ${p} seems too high for ${symbol}, dividing by ~155 (possible INR conversion)`);
+        return p / 155; // rough inverse of INR conversion
+      }
+      return p;
+    };
+
+    const validatedPrice = validatePrice(currentPrice);
+
     return {
       symbol,
-      price: currentPrice,
+      price: validatedPrice,
       signalType,
       score,
       confidence: Math.round(confidence),
-      entryPrice: Number(entryPrice.toFixed(4)),
-      stopLoss: Number(stopLoss.toFixed(4)),
-      target: Number(target.toFixed(4)),
+      entryPrice: Number((entryPrice / (currentPrice / validatedPrice)).toFixed(4)),
+      stopLoss: Number((stopLoss / (currentPrice / validatedPrice)).toFixed(4)),
+      target: Number((target / (currentPrice / validatedPrice)).toFixed(4)),
       generatedAt: now.toISOString(),
       validFor: `${validForHours}hrs`,
       validUntil: validUntil.toISOString(),
       pcr: Number(volumeRatio.toFixed(4)),
       maxPain: Number(priceChange.toFixed(2)),
       daysToExpiry: null,
-      generatedAt: new Date().toISOString(),
       isMock: false,
       breakdown,
       indicators: {
