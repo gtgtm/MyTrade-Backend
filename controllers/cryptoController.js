@@ -29,13 +29,20 @@ class CryptoController {
         });
       }
 
-      // DEBUG: Log actual Binance price
-      console.log(`[CRYPTO_SIGNAL_DEBUG] ${normalizedSymbol}: Binance ticker price = $${data.ticker.price}`);
+      // CRITICAL FIX: If ticker price differs >20% from last kline close, use CoinGecko
+      const lastKlineClose = data.klines?.length > 0 ? data.klines[data.klines.length - 1].close : data.ticker.price;
+      const priceDiff = Math.abs(data.ticker.price - lastKlineClose) / lastKlineClose;
+
+      if (priceDiff > 0.2) {
+        console.log(`[CryptoController] ALERT: Price mismatch >20% for ${normalizedSymbol}. Ticker: $${data.ticker.price}, Kline: $${lastKlineClose}. Using CoinGecko fallback.`);
+        const fallbackPrice = await cryptoService.getFallbackPrice(normalizedSymbol);
+        if (fallbackPrice) {
+          data.ticker.price = fallbackPrice;
+          console.log(`[CryptoController] Using CoinGecko fallback price: $${fallbackPrice}`);
+        }
+      }
 
       const signal = CryptoSignalEngine.generate(normalizedSymbol, data.klines, data.ticker);
-
-      // DEBUG: Log signal price
-      console.log(`[CRYPTO_SIGNAL_DEBUG] ${normalizedSymbol}: Generated signal price = $${signal.price}`);
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
