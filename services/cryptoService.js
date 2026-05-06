@@ -1,25 +1,42 @@
 import axios from 'axios';
 
-const BINANCE_API_BASE = 'https://api.binance.com/api/v3';
+// Try multiple Binance endpoints (some may be less blocked)
+const BINANCE_ENDPOINTS = [
+  'https://api.binance.com/api/v3',
+  'https://api1.binance.com/api/v3',
+  'https://api2.binance.com/api/v3',
+  'https://api3.binance.com/api/v3'
+];
+
+let currentEndpointIndex = 0;
+
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'];
 
 class CryptoService {
   constructor() {
     this.client = axios.create({
-      baseURL: BINANCE_API_BASE,
       timeout: 15000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.binance.com/'
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1'
       }
     });
   }
 
+  getBaseURL() {
+    return BINANCE_ENDPOINTS[currentEndpointIndex];
+  }
+
+  switchEndpoint() {
+    currentEndpointIndex = (currentEndpointIndex + 1) % BINANCE_ENDPOINTS.length;
+    console.log(`[CryptoService] Switched to Binance endpoint: ${this.getBaseURL()}`);
+  }
+
   async fetchKlines(symbol, interval = '15m', limit = 100, retries = 2) {
     try {
-      const res = await this.client.get('/klines', {
+      const res = await this.client.get(`${this.getBaseURL()}/klines`, {
         params: { symbol, interval, limit }
       });
       return res.data.map(k => ({
@@ -45,7 +62,7 @@ class CryptoService {
 
   async fetchTicker(symbol, retries = 2) {
     try {
-      const res = await this.client.get('/ticker/24hr', {
+      const res = await this.client.get(`${this.getBaseURL()}/ticker/24hr`, {
         params: { symbol }
       });
       return {
