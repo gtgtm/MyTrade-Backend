@@ -29,7 +29,13 @@ class CryptoController {
         });
       }
 
+      // DEBUG: Log actual Binance price
+      console.log(`[CRYPTO_SIGNAL_DEBUG] ${normalizedSymbol}: Binance ticker price = $${data.ticker.price}`);
+
       const signal = CryptoSignalEngine.generate(normalizedSymbol, data.klines, data.ticker);
+
+      // DEBUG: Log signal price
+      console.log(`[CRYPTO_SIGNAL_DEBUG] ${normalizedSymbol}: Generated signal price = $${signal.price}`);
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
