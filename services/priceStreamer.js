@@ -60,15 +60,16 @@ class PriceStreamer {
 
   /**
    * Fetch and enhance option chain data with Greeks, Max Pain, PCR
+   * DISABLED: App is crypto-only now
    */
   async updateEnhancedData() {
-    const symbols = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
+    const symbols = []; // DISABLED: ['NIFTY', 'BANKNIFTY', 'SENSEX']
 
     try {
       await Promise.all(symbols.map(async (symbol) => {
         try {
           // Fetch raw option chain from NSE
-          const rawChain = await nseService.fetchOptionChain(symbol);
+          // const rawChain = await nseService.fetchOptionChain(symbol);
 
           // Enhance with Greeks, Max Pain, PCR
           const enhanced = optionChainEnhancedService.enhanceOptionChain(rawChain, {
