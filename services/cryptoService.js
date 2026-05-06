@@ -26,23 +26,27 @@ class CryptoService {
   async getFallbackPrice(symbol) {
     try {
       const coinId = this.getCoinGeckoId(symbol);
-      if (!coinId) return null;
+      if (!coinId) {
+        console.warn(`[CryptoService] No CoinGecko mapping for ${symbol}`);
+        return null;
+      }
 
       const res = await this.fallbackClient.get('/simple/price', {
         params: {
           ids: coinId,
-          vs_currencies: 'usd',
-          include_market_cap: false
+          vs_currencies: 'usd'
         }
       });
 
-      const price = res.data[coinId]?.usd;
-      if (price) {
-        console.log(`[CryptoService] Using CoinGecko fallback for ${symbol}: $${price}`);
+      const price = res.data?.[coinId]?.usd;
+      if (price && price > 0) {
+        console.log(`[CryptoService] CoinGecko price for ${symbol} (${coinId}): $${price}`);
         return price;
+      } else {
+        console.error(`[CryptoService] Invalid price from CoinGecko for ${symbol}: ${price}`);
       }
     } catch (err) {
-      console.error(`[CryptoService] CoinGecko fallback failed for ${symbol}:`, err.message);
+      console.error(`[CryptoService] CoinGecko fallback failed for ${symbol}:`, err.message, err.response?.status);
     }
     return null;
   }
@@ -58,7 +62,23 @@ class CryptoService {
       'BNBUSDT': 'binancecoin',
       'ADAUSDT': 'cardano',
       'MATICUSDT': 'matic-network',
-      'UNIUSDT': 'uniswap'
+      'UNIUSDT': 'uniswap',
+      'ARBUSDT': 'arbitrum',
+      'OPUSDT': 'optimism',
+      'FLOKIUSDT': 'floki',
+      'PEPEUSDT': 'pepe',
+      'MEMEUSDT': 'memecoin',
+      'BOMEUSDT': 'bomb-money',
+      'BONKUSDT': 'bonk',
+      'FILUSDT': 'filecoin',
+      'ATOMUSDT': 'cosmos',
+      'DOTUSDT': 'polkadot',
+      'LTCUSDT': 'litecoin',
+      'AVAXUSDT': 'avalanche-2',
+      'VETUSDT': 'vechain',
+      'FTMUSDT': 'fantom',
+      'HBARUSDT': 'hedera-hashgraph',
+      'NEARUSDT': 'near'
     };
     return map[symbol] || null;
   }
