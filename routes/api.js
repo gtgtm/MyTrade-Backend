@@ -255,8 +255,25 @@ router.get('/crypto/signals/:symbol', (req, res) =>
   cryptoController.getSignal(req, res)
 );
 
+// DEBUG: Test endpoint to check CoinGecko price
+router.get('/crypto/test/coingecko/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
+  try {
+    const cryptoService = (await import('../services/cryptoService.js')).default;
+    const price = await cryptoService.getFallbackPrice(normalizedSymbol);
+    res.json({
+      symbol: normalizedSymbol,
+      coingeckoPrice: price,
+      message: 'Price from CoinGecko API'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DEBUG: Test endpoint to check raw Binance price
-router.get('/crypto/test/:symbol', async (req, res) => {
+router.get('/crypto/test/binance/:symbol', async (req, res) => {
   const { symbol } = req.params;
   const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
   try {
@@ -268,11 +285,10 @@ router.get('/crypto/test/:symbol', async (req, res) => {
     res.json({
       symbol: normalizedSymbol,
       binancePrice: parseFloat(response.data.lastPrice),
-      rawResponse: response.data.lastPrice,
       message: 'Raw price directly from Binance API'
     });
   } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
+    res.status(500).json({ error: err.message });
   }
 });
 
