@@ -39,7 +39,15 @@ class CryptoController {
         });
       }
 
+      // Ensure price is in USD (Binance native)
+      console.log(`[CryptoController] ${normalizedSymbol} - Binance price from ticker: $${data.ticker.price}`);
+
       const signal = CryptoSignalEngine.generate(normalizedSymbol, data.klines, data.ticker);
+
+      // Validate signal price is reasonable (USD, not converted)
+      if (signal.price > 100000) {
+        console.warn(`[CryptoController] WARNING: Signal price ${signal.price} seems too high for ${normalizedSymbol}, possible currency conversion issue`);
+      }
       global.cache?.setCache(cacheKey, signal);
 
       // Log signal for accuracy tracking
