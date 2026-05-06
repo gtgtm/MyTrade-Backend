@@ -260,15 +260,19 @@ router.get('/crypto/test/:symbol', async (req, res) => {
   const { symbol } = req.params;
   const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
   try {
-    const cryptoService = (await import('../services/cryptoService.js')).default;
-    const ticker = await cryptoService.fetchTicker(normalizedSymbol);
+    const axios = (await import('axios')).default;
+    const BINANCE_API_BASE = 'https://api.binance.com/api/v3';
+    const response = await axios.get(`${BINANCE_API_BASE}/ticker/24hr`, {
+      params: { symbol: normalizedSymbol }
+    });
     res.json({
       symbol: normalizedSymbol,
-      binancePrice: ticker.price,
-      message: 'Raw price from Binance API'
+      binancePrice: parseFloat(response.data.lastPrice),
+      rawResponse: response.data.lastPrice,
+      message: 'Raw price directly from Binance API'
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
