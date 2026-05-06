@@ -24,7 +24,7 @@ router.get('/signals/quote/:symbol', signalController.getQuote);
 router.get('/signals/supported-symbols', (req, res) => {
   res.json({
     success: true,
-    data: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "BNBUSDT", "ADAUSDT", "MATICUSDT", "UNIUSDT", "ARBUSDT", "OPUSDT", "FLOKIUSDT", "PEPEUSDT", "MEMEUSDT", "BOMEUSDT", "BONKUSDT", "FILUSDT", "ATOMUSDT"]
+    data: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "BNBUSDT", "ADAUSDT", "MATICUSDT", "UNIUSDT", "ARBUSDT", "OPUSDT", "FLOKIUSDT", "PEPEUSDT", "MEMEUSDT", "BOMEUSDT", "BONKUSDT", "FILUSDT", "ATOMUSDT", "DOTUSDT", "LTCUSDT", "AVAXUSDT", "VETUSDT", "FTMUSDT", "HBARUSDT", "NEARUSDT"]
   });
 });
 

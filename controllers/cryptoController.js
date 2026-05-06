@@ -2,7 +2,7 @@ import cryptoService from '../services/cryptoService.js';
 import CryptoSignalEngine from '../services/cryptoSignalEngine.js';
 import signalLogger from '../services/signalAccuracyLogger.js';
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'BNBUSDT', 'ADAUSDT', 'MATICUSDT', 'UNIUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'PEPEUSDT', 'MEMEUSDT', 'BOMEUSDT', 'BONKUSDT', 'FILUSDT', 'ATOMUSDT'];
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'BNBUSDT', 'ADAUSDT', 'MATICUSDT', 'UNIUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'PEPEUSDT', 'MEMEUSDT', 'BOMEUSDT', 'BONKUSDT', 'FILUSDT', 'ATOMUSDT', 'DOTUSDT', 'LTCUSDT', 'AVAXUSDT', 'VETUSDT', 'FTMUSDT', 'HBARUSDT', 'NEARUSDT'];
 
 class CryptoController {
   async getSignal(req, res) {
