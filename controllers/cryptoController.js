@@ -18,22 +18,36 @@ class CryptoController {
       });
     }
 
-    // NOTE: Crypto signals ALWAYS need fresh prices - no caching!
-    // Binance API is blocked on Render, so use CoinGecko for real-time prices
     try {
-      // FORCE: Use CoinGecko for accurate real-time prices
-      const livePrice = await cryptoService.getFallbackPrice(normalizedSymbol);
+      // Use cache for prices (5 min TTL) to avoid rate limiting
+      const cacheKey = `price_${normalizedSymbol}`;
+      const cachedPrice = global.cache?.getFromCache(cacheKey);
+
+      let livePrice = null;
+
+      if (cachedPrice) {
+        console.log(`[CryptoController] Using cached price for ${normalizedSymbol}: $${cachedPrice}`);
+        livePrice = cachedPrice;
+      } else {
+        // Try to fetch fresh price from CoinGecko
+        console.log(`[CryptoController] Fetching fresh price for ${normalizedSymbol}...`);
+        livePrice = await cryptoService.getFallbackPrice(normalizedSymbol);
+
+        if (livePrice) {
+          // Cache for 5 minutes
+          global.cache?.setCache(cacheKey, livePrice);
+          console.log(`[CryptoController] Cached price for ${normalizedSymbol}: $${livePrice}`);
+        }
+      }
 
       if (!livePrice) {
         return res.status(500).json({
           success: false,
-          error: `Failed to fetch price for ${normalizedSymbol} - symbol may not exist`
+          error: `Failed to fetch price for ${normalizedSymbol} - symbol may not exist or API rate limited`
         });
       }
 
-      console.log(`[CryptoController] ${normalizedSymbol}: Using CoinGecko price $${livePrice}`);
-
-      // Try to get klines, but they might fail due to IP blocking
+      // Try to get klines, but they might fail
       let klines = [];
       let priceChange = 0;
       try {
@@ -41,10 +55,10 @@ class CryptoController {
         klines = data?.klines || [];
         priceChange = data?.ticker?.priceChangePercent || 0;
       } catch (err) {
-        console.log(`[CryptoController] Could not fetch klines for ${normalizedSymbol}, using price-only signal`);
+        console.log(`[CryptoController] Could not fetch klines for ${normalizedSymbol}`);
       }
 
-      // Create ticker with CoinGecko's real-time price
+      // Create ticker with real-time price
       const ticker = {
         symbol: normalizedSymbol,
         price: livePrice,
@@ -72,7 +86,7 @@ class CryptoController {
           fromCache: false,
           validFor: signal.validFor,
           validUntil: signal.validUntil,
-          livePrice: data.ticker.price
+          livePrice
         }
       });
     } catch (err) {
@@ -114,7 +128,7 @@ class CryptoController {
 
       // Priority 2: Fall back to generating fresh signals
       const signals = await Promise.allSettled(
-        SYMBOLS.map(async symbol => {
+        DEFAULT_SYMBOLS.map(async symbol => {
           const cacheKey = `crypto_signal_${symbol}`;
           const cached = global.cache?.getFromCache(cacheKey);
           if (cached) return cached;
