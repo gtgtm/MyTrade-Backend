@@ -19,30 +19,37 @@ class CryptoController {
     }
 
     // NOTE: Crypto signals ALWAYS need fresh prices - no caching!
-    // Users need real-time prices, not 2-minute-old cached data
+    // Binance API is blocked on Render, so use CoinGecko for real-time prices
     try {
-      const data = await cryptoService.fetchAll(normalizedSymbol);
-      if (!data) {
+      // FORCE: Use CoinGecko for accurate real-time prices
+      const livePrice = await cryptoService.getFallbackPrice(normalizedSymbol);
+
+      if (!livePrice) {
         return res.status(500).json({
           success: false,
-          error: 'Failed to fetch crypto data'
+          error: `Failed to fetch price for ${normalizedSymbol} - symbol may not exist`
         });
       }
 
-      // CRITICAL FIX: If ticker price differs >20% from last kline close, use CoinGecko
-      const lastKlineClose = data.klines?.length > 0 ? data.klines[data.klines.length - 1].close : data.ticker.price;
-      const priceDiff = Math.abs(data.ticker.price - lastKlineClose) / lastKlineClose;
+      // Still try to get klines for technical analysis, but use CoinGecko price
+      const data = await cryptoService.fetchAll(normalizedSymbol);
 
-      if (priceDiff > 0.2) {
-        console.log(`[CryptoController] ALERT: Price mismatch >20% for ${normalizedSymbol}. Ticker: $${data.ticker.price}, Kline: $${lastKlineClose}. Using CoinGecko fallback.`);
-        const fallbackPrice = await cryptoService.getFallbackPrice(normalizedSymbol);
-        if (fallbackPrice) {
-          data.ticker.price = fallbackPrice;
-          console.log(`[CryptoController] Using CoinGecko fallback price: $${fallbackPrice}`);
-        }
-      }
+      // Override ticker price with CoinGecko's real-time price
+      const ticker = {
+        symbol: normalizedSymbol,
+        price: livePrice,
+        priceChangePercent: data?.ticker?.priceChangePercent || 0,
+        volume: data?.ticker?.volume || 0,
+        quoteVolume: data?.ticker?.quoteVolume || 0,
+        highPrice: livePrice,
+        lowPrice: livePrice,
+        bidPrice: livePrice,
+        askPrice: livePrice
+      };
 
-      const signal = CryptoSignalEngine.generate(normalizedSymbol, data.klines, data.ticker);
+      console.log(`[CryptoController] ${normalizedSymbol}: Using CoinGecko price $${livePrice}`);
+
+      const signal = CryptoSignalEngine.generate(normalizedSymbol, data?.klines || [], ticker);
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
