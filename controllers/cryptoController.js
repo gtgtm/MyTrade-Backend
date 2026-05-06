@@ -31,25 +31,33 @@ class CryptoController {
         });
       }
 
-      // Still try to get klines for technical analysis, but use CoinGecko price
-      const data = await cryptoService.fetchAll(normalizedSymbol);
+      console.log(`[CryptoController] ${normalizedSymbol}: Using CoinGecko price $${livePrice}`);
 
-      // Override ticker price with CoinGecko's real-time price
+      // Try to get klines, but they might fail due to IP blocking
+      let klines = [];
+      let priceChange = 0;
+      try {
+        const data = await cryptoService.fetchAll(normalizedSymbol);
+        klines = data?.klines || [];
+        priceChange = data?.ticker?.priceChangePercent || 0;
+      } catch (err) {
+        console.log(`[CryptoController] Could not fetch klines for ${normalizedSymbol}, using price-only signal`);
+      }
+
+      // Create ticker with CoinGecko's real-time price
       const ticker = {
         symbol: normalizedSymbol,
         price: livePrice,
-        priceChangePercent: data?.ticker?.priceChangePercent || 0,
-        volume: data?.ticker?.volume || 0,
-        quoteVolume: data?.ticker?.quoteVolume || 0,
+        priceChangePercent: priceChange,
+        volume: 0,
+        quoteVolume: 0,
         highPrice: livePrice,
         lowPrice: livePrice,
         bidPrice: livePrice,
         askPrice: livePrice
       };
 
-      console.log(`[CryptoController] ${normalizedSymbol}: Using CoinGecko price $${livePrice}`);
-
-      const signal = CryptoSignalEngine.generate(normalizedSymbol, data?.klines || [], ticker);
+      const signal = CryptoSignalEngine.generate(normalizedSymbol, klines, ticker);
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
