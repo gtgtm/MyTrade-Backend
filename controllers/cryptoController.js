@@ -2,17 +2,19 @@ import cryptoService from '../services/cryptoService.js';
 import CryptoSignalEngine from '../services/cryptoSignalEngine.js';
 import signalLogger from '../services/signalAccuracyLogger.js';
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'BNBUSDT', 'ADAUSDT', 'MATICUSDT', 'UNIUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'PEPEUSDT', 'MEMEUSDT', 'BOMEUSDT', 'BONKUSDT', 'FILUSDT', 'ATOMUSDT', 'DOTUSDT', 'LTCUSDT', 'AVAXUSDT', 'VETUSDT', 'FTMUSDT', 'HBARUSDT', 'NEARUSDT'];
+// Default supported symbols for dashboard display
+const DEFAULT_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'LINKUSDT', 'BNBUSDT', 'ADAUSDT', 'MATICUSDT', 'UNIUSDT', 'ARBUSDT', 'OPUSDT', 'FLOKIUSDT', 'PEPEUSDT', 'MEMEUSDT', 'BOMEUSDT', 'BONKUSDT', 'FILUSDT', 'ATOMUSDT', 'DOTUSDT', 'LTCUSDT', 'AVAXUSDT', 'VETUSDT', 'FTMUSDT', 'HBARUSDT', 'NEARUSDT'];
 
 class CryptoController {
   async getSignal(req, res) {
     const { symbol } = req.params;
     const normalizedSymbol = symbol.toUpperCase().endsWith('USDT') ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
 
-    if (!SYMBOLS.includes(normalizedSymbol)) {
+    // Validate symbol format (must be valid Binance symbol)
+    if (!/^[A-Z0-9]+USDT$/.test(normalizedSymbol)) {
       return res.status(400).json({
         success: false,
-        error: `Invalid crypto symbol. Supported: ${SYMBOLS.join(', ')}`
+        error: `Invalid symbol format. Expected format: XXXUSDT (e.g., BTCUSDT)`
       });
     }
 

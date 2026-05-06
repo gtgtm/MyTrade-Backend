@@ -22,6 +22,7 @@ router.get('/signals', signalController.getSignals);
 router.get('/signals/supported-symbols', (req, res) => {
   res.json({
     success: true,
+    note: "These are pre-configured coins. Signals can be generated for any valid Binance coin (XXXUSDT format)",
     data: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "LINKUSDT", "BNBUSDT", "ADAUSDT", "MATICUSDT", "UNIUSDT", "ARBUSDT", "OPUSDT", "FLOKIUSDT", "PEPEUSDT", "MEMEUSDT", "BOMEUSDT", "BONKUSDT", "FILUSDT", "ATOMUSDT", "DOTUSDT", "LTCUSDT", "AVAXUSDT", "VETUSDT", "FTMUSDT", "HBARUSDT", "NEARUSDT"]
   });
 });
