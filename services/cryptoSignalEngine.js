@@ -26,8 +26,17 @@ class CryptoSignalEngine {
     const macd = this.macd(closes);
     const bb = this.bollingerBands(closes, 20, 2);
 
-    // Market data
-    const currentPrice = ticker.price;
+    // Market data - ALWAYS use live ticker price, never kline close
+    let currentPrice = ticker.price;
+
+    // Sanity check: if currentPrice is wildly different from last kline close,
+    // use the ticker price (which comes directly from Binance API)
+    const lastKlineClose = closes[closes.length - 1];
+    if (Math.abs(currentPrice - lastKlineClose) / lastKlineClose > 0.5) {
+      console.log(`[SignalEngine] ${symbol}: Kline close (${lastKlineClose}) differs >50% from ticker price (${currentPrice}), using ticker price`);
+      currentPrice = ticker.price; // Use the live price from ticker, not the old kline
+    }
+
     const priceChange = ticker.priceChangePercent;
 
     // Volume analysis
