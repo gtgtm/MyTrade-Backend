@@ -1,42 +1,71 @@
 import axios from 'axios';
 
-// Try multiple Binance endpoints (some may be less blocked)
-const BINANCE_ENDPOINTS = [
-  'https://api.binance.com/api/v3',
-  'https://api1.binance.com/api/v3',
-  'https://api2.binance.com/api/v3',
-  'https://api3.binance.com/api/v3'
-];
-
-let currentEndpointIndex = 0;
+const BINANCE_API_BASE = 'https://api.binance.com/api/v3';
+// Fallback: Use proxy service when Render's IP is blocked
+const PROXY_API_BASE = 'https://api.coingecko.com/api/v3';
 
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT'];
 
 class CryptoService {
   constructor() {
-    this.client = axios.create({
-      timeout: 15000,
+    this.binanceClient = axios.create({
+      baseURL: BINANCE_API_BASE,
+      timeout: 10000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'DNT': '1'
+        'User-Agent': 'Mozilla/5.0'
       }
+    });
+    // CoinGecko as fallback (free, no blocking)
+    this.fallbackClient = axios.create({
+      baseURL: PROXY_API_BASE,
+      timeout: 10000
     });
   }
 
-  getBaseURL() {
-    return BINANCE_ENDPOINTS[currentEndpointIndex];
+  // Convert CoinGecko price to match Binance format
+  async getFallbackPrice(symbol) {
+    try {
+      const coinId = this.getCoinGeckoId(symbol);
+      if (!coinId) return null;
+
+      const res = await this.fallbackClient.get('/simple/price', {
+        params: {
+          ids: coinId,
+          vs_currencies: 'usd',
+          include_market_cap: false
+        }
+      });
+
+      const price = res.data[coinId]?.usd;
+      if (price) {
+        console.log(`[CryptoService] Using CoinGecko fallback for ${symbol}: $${price}`);
+        return price;
+      }
+    } catch (err) {
+      console.error(`[CryptoService] CoinGecko fallback failed for ${symbol}:`, err.message);
+    }
+    return null;
   }
 
-  switchEndpoint() {
-    currentEndpointIndex = (currentEndpointIndex + 1) % BINANCE_ENDPOINTS.length;
-    console.log(`[CryptoService] Switched to Binance endpoint: ${this.getBaseURL()}`);
+  getCoinGeckoId(symbol) {
+    const map = {
+      'BTCUSDT': 'bitcoin',
+      'ETHUSDT': 'ethereum',
+      'SOLUSDT': 'solana',
+      'XRPUSDT': 'ripple',
+      'DOGEUSDT': 'dogecoin',
+      'LINKUSDT': 'chainlink',
+      'BNBUSDT': 'binancecoin',
+      'ADAUSDT': 'cardano',
+      'MATICUSDT': 'matic-network',
+      'UNIUSDT': 'uniswap'
+    };
+    return map[symbol] || null;
   }
 
   async fetchKlines(symbol, interval = '15m', limit = 100, retries = 2) {
     try {
-      const res = await this.client.get(`${this.getBaseURL()}/klines`, {
+      const res = await this.binanceClient.get('/klines', {
         params: { symbol, interval, limit }
       });
       return res.data.map(k => ({
@@ -62,7 +91,7 @@ class CryptoService {
 
   async fetchTicker(symbol, retries = 2) {
     try {
-      const res = await this.client.get(`${this.getBaseURL()}/ticker/24hr`, {
+      const res = await this.binanceClient.get('/ticker/24hr', {
         params: { symbol }
       });
       return {
@@ -77,6 +106,23 @@ class CryptoService {
         askPrice: parseFloat(res.data.askPrice)
       };
     } catch (err) {
+      // Binance blocked - try CoinGecko fallback
+      console.log(`[CryptoService] Binance failed for ${symbol}, trying CoinGecko fallback...`);
+      const fallbackPrice = await this.getFallbackPrice(symbol);
+      if (fallbackPrice) {
+        return {
+          symbol: symbol,
+          price: fallbackPrice,
+          priceChangePercent: 0, // CoinGecko doesn't provide 24h change easily
+          volume: 0,
+          quoteVolume: 0,
+          highPrice: fallbackPrice,
+          lowPrice: fallbackPrice,
+          bidPrice: fallbackPrice,
+          askPrice: fallbackPrice
+        };
+      }
+
       if (retries > 0) {
         console.log(`CryptoService.fetchTicker(${symbol}) retry ${3 - retries}/2...`);
         await new Promise(r => setTimeout(r, 500));
