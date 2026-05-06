@@ -18,18 +18,8 @@ class CryptoController {
       });
     }
 
-    const cacheKey = `crypto_signal_${normalizedSymbol}`;
-    const cached = global.cache?.getFromCache(cacheKey);
-    if (cached) {
-      return res.json({
-        success: true,
-        data: cached,
-        isMock: cached.isMock || false,
-        cached: true,
-        timestamp: cached.generatedAt || new Date().toISOString()
-      });
-    }
-
+    // NOTE: Crypto signals ALWAYS need fresh prices - no caching!
+    // Users need real-time prices, not 2-minute-old cached data
     try {
       const data = await cryptoService.fetchAll(normalizedSymbol);
       if (!data) {
@@ -39,16 +29,7 @@ class CryptoController {
         });
       }
 
-      // Ensure price is in USD (Binance native)
-      console.log(`[CryptoController] ${normalizedSymbol} - Binance price from ticker: $${data.ticker.price}`);
-
       const signal = CryptoSignalEngine.generate(normalizedSymbol, data.klines, data.ticker);
-
-      // Validate signal price is reasonable (USD, not converted)
-      if (signal.price > 100000) {
-        console.warn(`[CryptoController] WARNING: Signal price ${signal.price} seems too high for ${normalizedSymbol}, possible currency conversion issue`);
-      }
-      global.cache?.setCache(cacheKey, signal);
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
