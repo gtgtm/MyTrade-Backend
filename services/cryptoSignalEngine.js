@@ -11,8 +11,14 @@ class CryptoSignalEngine {
   };
 
   static generate(symbol, klines, ticker) {
-    if (!klines || klines.length < 50 || !ticker) {
-      return this.emptySignal(symbol, ticker?.price || 0);
+    if (!ticker) {
+      console.error(`[CryptoSignalEngine] No ticker data for ${symbol}`);
+      throw new Error(`Price data unavailable for ${symbol}`);
+    }
+
+    if (!klines || klines.length < 50) {
+      console.warn(`[CryptoSignalEngine] Insufficient kline data for ${symbol}: ${klines?.length || 0} < 50`);
+      throw new Error(`Insufficient historical data (${klines?.length || 0} candles, need 50+)`);
     }
 
     const closes = klines.map(k => k.close);

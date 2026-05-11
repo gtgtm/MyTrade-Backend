@@ -71,7 +71,17 @@ class CryptoController {
         askPrice: livePrice
       };
 
-      const signal = CryptoSignalEngine.generate(normalizedSymbol, klines, ticker);
+      let signal;
+      try {
+        signal = CryptoSignalEngine.generate(normalizedSymbol, klines, ticker);
+      } catch (signalErr) {
+        console.warn(`[CryptoController] Signal generation failed for ${normalizedSymbol}: ${signalErr.message}`);
+        return res.status(400).json({
+          success: false,
+          error: signalErr.message,
+          details: `Could not generate signal: ${signalErr.message}`
+        });
+      }
 
       // Log signal for accuracy tracking
       signalLogger.logGenerated(signal).catch(err => console.error('Signal logging error:', err.message));
@@ -93,7 +103,8 @@ class CryptoController {
       console.error('CryptoController.getSignal error:', err);
       res.status(500).json({
         success: false,
-        error: err.message || 'Unknown error'
+        error: err.message || 'Unknown error',
+        details: err.message
       });
     }
   }
