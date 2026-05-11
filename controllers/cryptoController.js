@@ -47,29 +47,49 @@ class CryptoController {
         });
       }
 
-      // Try to get klines, but they might fail
+      // Try to get klines with fresh ticker from Binance
       let klines = [];
-      let priceChange = 0;
+      let ticker = null;
       try {
+        console.log(`[CryptoController] Fetching fresh klines and ticker for ${normalizedSymbol}...`);
         const data = await cryptoService.fetchAll(normalizedSymbol);
         klines = data?.klines || [];
-        priceChange = data?.ticker?.priceChangePercent || 0;
-      } catch (err) {
-        console.log(`[CryptoController] Could not fetch klines for ${normalizedSymbol}`);
-      }
+        ticker = data?.ticker;
 
-      // Create ticker with real-time price
-      const ticker = {
-        symbol: normalizedSymbol,
-        price: livePrice,
-        priceChangePercent: priceChange,
-        volume: 0,
-        quoteVolume: 0,
-        highPrice: livePrice,
-        lowPrice: livePrice,
-        bidPrice: livePrice,
-        askPrice: livePrice
-      };
+        // Use Binance ticker price if available, fall back to CoinGecko
+        if (ticker && ticker.price) {
+          console.log(`[CryptoController] Using Binance price for ${normalizedSymbol}: $${ticker.price}`);
+          livePrice = ticker.price; // Override with Binance price
+        } else {
+          console.log(`[CryptoController] Binance ticker unavailable, using CoinGecko price: $${livePrice}`);
+          // Create synthetic ticker from CoinGecko price
+          ticker = {
+            symbol: normalizedSymbol,
+            price: livePrice,
+            priceChangePercent: 0,
+            volume: 0,
+            quoteVolume: 0,
+            highPrice: livePrice,
+            lowPrice: livePrice,
+            bidPrice: livePrice,
+            askPrice: livePrice
+          };
+        }
+      } catch (err) {
+        console.log(`[CryptoController] Could not fetch klines for ${normalizedSymbol}, creating synthetic ticker`);
+        // Create synthetic ticker from CoinGecko price
+        ticker = {
+          symbol: normalizedSymbol,
+          price: livePrice,
+          priceChangePercent: 0,
+          volume: 0,
+          quoteVolume: 0,
+          highPrice: livePrice,
+          lowPrice: livePrice,
+          bidPrice: livePrice,
+          askPrice: livePrice
+        };
+      }
 
       let signal;
       try {

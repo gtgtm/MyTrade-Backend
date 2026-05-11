@@ -16,9 +16,10 @@ class CryptoSignalEngine {
       throw new Error(`Price data unavailable for ${symbol}`);
     }
 
+    // If insufficient klines, return a neutral signal with current price
     if (!klines || klines.length < 50) {
-      console.warn(`[CryptoSignalEngine] Insufficient kline data for ${symbol}: ${klines?.length || 0} < 50`);
-      throw new Error(`Insufficient historical data (${klines?.length || 0} candles, need 50+)`);
+      console.warn(`[CryptoSignalEngine] Insufficient kline data for ${symbol}: ${klines?.length || 0} < 50, returning neutral signal with current price`);
+      return this.neutralSignalWithCurrentPrice(symbol, ticker);
     }
 
     const closes = klines.map(k => k.close);
@@ -405,6 +406,81 @@ class CryptoSignalEngine {
         }
       },
       indicators: {}
+    };
+  }
+
+  static neutralSignalWithCurrentPrice(symbol, ticker) {
+    const now = new Date();
+    const validForHours = 4;
+    const validUntil = new Date(now.getTime() + validForHours * 60 * 60 * 1000);
+    const price = ticker.price;
+
+    return {
+      symbol,
+      price: Number(price.toFixed(4)),
+      signalType: 'NO TRADE',
+      score: 50,
+      confidence: 40,
+      entryPrice: Number(price.toFixed(4)),
+      stopLoss: Number((price * 0.97).toFixed(4)),
+      target: Number((price * 1.07).toFixed(4)),
+      generatedAt: now.toISOString(),
+      validFor: `${validForHours}hrs`,
+      validUntil: validUntil.toISOString(),
+      pcr: 0.5,
+      maxPain: ticker.priceChangePercent || 0,
+      daysToExpiry: null,
+      isMock: false,
+      breakdown: {
+        trend: {
+          label: 'Current Price',
+          score: 5,
+          maxScore: 25,
+          direction: 'NEUTRAL',
+          reason: 'Waiting for sufficient historical data to generate technical signal'
+        },
+        confirmation: {
+          label: 'Waiting',
+          score: 0,
+          maxScore: 20,
+          direction: null,
+          reason: 'Need 50+ candles for confirmation analysis'
+        },
+        entry: {
+          label: 'Current Market',
+          score: 15,
+          maxScore: 15,
+          direction: null,
+          reason: `Entry at market price: $${price.toFixed(4)}`
+        },
+        pcr: {
+          label: 'Pending',
+          score: 0,
+          maxScore: 20,
+          direction: null,
+          reason: 'No options data available'
+        },
+        maxPain: {
+          label: '24h Change',
+          score: 5,
+          maxScore: 10,
+          direction: ticker.priceChangePercent > 0 ? 'BULLISH' : ticker.priceChangePercent < 0 ? 'BEARISH' : 'NEUTRAL',
+          reason: `Price changed ${ticker.priceChangePercent.toFixed(2)}% in last 24h`
+        }
+      },
+      indicators: {
+        rsi14: null,
+        ema9: null,
+        ema21: null,
+        macd: null,
+        signal: null,
+        histogram: null,
+        bbUpper: null,
+        bbLower: null,
+        priceChange24h: ticker.priceChangePercent || 0,
+        volumeRatio: 0.5,
+        volumeTrend: null
+      }
     };
   }
 
